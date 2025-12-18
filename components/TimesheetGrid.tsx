@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { FrameData, Track } from '../types';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { Track } from '../types';
 
 interface TimesheetGridProps {
   tracks: Track[];
@@ -38,6 +38,23 @@ export const TimesheetGrid: React.FC<TimesheetGridProps> = ({
   onDragEnd,
   onBackgroundClick
 }) => {
+  const lastDragFrameRef = useRef<number | null>(null);
+
+  const getActiveFrameFromPoint = useCallback((x: number, y: number) => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    if (!el) return null;
+
+    const cell = el.closest<HTMLElement>('[data-frame-index][data-track-id]');
+    if (!cell) return null;
+
+    const trackId = cell.dataset.trackId;
+    if (trackId !== activeTrackId) return null;
+
+    const frameIndex = Number(cell.dataset.frameIndex);
+    if (!Number.isFinite(frameIndex)) return null;
+
+    return frameIndex;
+  }, [activeTrackId]);
   
   // Find maximum length to determine how many sheets we need
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
@@ -190,23 +207,50 @@ export const TimesheetGrid: React.FC<TimesheetGridProps> = ({
                                 return (
                                 <div 
                                     key={i}
+                                    data-frame-index={globalFrameIndex}
+                                    data-track-id={trackCol.track.id}
                                     onClick={(e) => !isSelectionMode && onSeek(globalFrameIndex, e)}
-                                    // Pointer events mostly relevant for active track, but allow seeking globally
+                                    // スマホ（タッチ）でも複数コマ選択できるように pointer capture + elementFromPoint でドラッグ追従する
                                     onPointerDown={(e) => {
-                                        if (isSelectionMode) {
-                                            e.preventDefault();
-                                            onDragStart(globalFrameIndex);
+                                        if (!isSelectionMode || !isTrackActive) return;
+                                        e.preventDefault();
+                                        lastDragFrameRef.current = globalFrameIndex;
+                                        e.currentTarget.setPointerCapture(e.pointerId);
+                                        onDragStart(globalFrameIndex);
+                                    }}
+                                    onPointerMove={(e) => {
+                                        if (!isSelectionMode || !isTrackActive) return;
+                                        const frameAtPoint = getActiveFrameFromPoint(e.clientX, e.clientY);
+                                        if (frameAtPoint === null) return;
+                                        if (frameAtPoint === lastDragFrameRef.current) return;
+                                        lastDragFrameRef.current = frameAtPoint;
+                                        onDragEnter(frameAtPoint);
+                                    }}
+                                    onPointerUp={(e) => {
+                                        if (!isSelectionMode || !isTrackActive) return;
+                                        lastDragFrameRef.current = null;
+                                        try {
+                                          e.currentTarget.releasePointerCapture(e.pointerId);
+                                        } catch {
+                                          // no-op
                                         }
+                                        onDragEnd();
                                     }}
-                                    onPointerEnter={() => {
-                                        if (isSelectionMode) onDragEnter(globalFrameIndex);
+                                    onPointerCancel={(e) => {
+                                        if (!isSelectionMode || !isTrackActive) return;
+                                        lastDragFrameRef.current = null;
+                                        try {
+                                          e.currentTarget.releasePointerCapture(e.pointerId);
+                                        } catch {
+                                          // no-op
+                                        }
+                                        onDragEnd();
                                     }}
-                                    onPointerUp={isSelectionMode ? onDragEnd : undefined}
                                     
                                     className={`relative cursor-pointer transition-colors ${borderClass} ${bgClass} box-border`}
                                     style={{ 
                                     height: `${rowHeight}px`,
-                                    touchAction: isSelectionMode ? 'none' : 'auto' 
+                                    touchAction: isSelectionMode && isTrackActive ? 'none' : 'auto'
                                     }}
                                 >
                                     {/* Duration End Indicator */}

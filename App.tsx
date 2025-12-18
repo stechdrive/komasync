@@ -530,7 +530,7 @@ export default function App() {
       saveToHistory();
 
       // 1. Determine Range
-      const sortedFrames = Array.from(selectedFrames).sort((a, b) => a - b);
+      const sortedFrames: number[] = [...selectedFrames].sort((a, b) => a - b);
       const startFrame = sortedFrames[0];
       const endFrame = sortedFrames[sortedFrames.length - 1];
 
@@ -675,6 +675,7 @@ export default function App() {
     setDragStartFrame(frame);
     setSelectionSnapshot(new Set(selectedFrames));
     lastClickedFrameRef.current = frame; 
+    setCurrentFrame(frame);
     
     const newSet = new Set(selectedFrames);
     if (!newSet.has(frame)) {
