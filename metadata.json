@@ -1,0 +1,7 @@
+{
+  "name": "KomaSync",
+  "description": "A professional tool for animators to synchronize dialogue with Japanese-style timesheets (24FPS). Features real-time recording, audio file import, and VAD (Voice Activity Detection) visualization.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
