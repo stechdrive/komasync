@@ -5,10 +5,12 @@ type EditPaletteProps = {
   selectionCount: number;
   targetLabel: string;
   canPaste: boolean;
+  isClipboardPanelOpen: boolean;
   onCut: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
-  onClearClipboard: () => void;
+  onHideClipboard: () => void;
+  onShowClipboard: () => void;
   onPasteInsert: () => void;
   onPasteOverwrite: () => void;
 };
@@ -17,10 +19,12 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   selectionCount,
   targetLabel,
   canPaste,
+  isClipboardPanelOpen,
   onCut,
   onDelete,
   onClearSelection,
-  onClearClipboard,
+  onHideClipboard,
+  onShowClipboard,
   onPasteInsert,
   onPasteOverwrite,
 }) => {
@@ -69,36 +73,50 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
 
         {canPaste && (
           <div className="mt-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] text-indigo-600 font-bold">クリップボード</div>
+            {isClipboardPanelOpen ? (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] text-indigo-600 font-bold">クリップボード</div>
+                  <button
+                    type="button"
+                    onClick={onHideClipboard}
+                    className="text-[10px] text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                    title="非表示"
+                  >
+                    <X className="w-3 h-3" />
+                    非表示
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onPasteInsert}
+                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-200 font-bold shadow-sm"
+                    title="貼り付け（挿入）"
+                  >
+                    <Clipboard className="w-4 h-4" /> 挿入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPasteOverwrite}
+                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-200 font-bold shadow-sm"
+                    title="貼り付け（上書き）"
+                  >
+                    <Clipboard className="w-4 h-4" /> 上書き
+                  </button>
+                </div>
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={onClearClipboard}
-                className="text-[10px] text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
-                title="クリップボードを消去"
-              >
-                <X className="w-3 h-3" />
-                解除
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={onPasteInsert}
+                onClick={onShowClipboard}
                 className="w-full flex items-center justify-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-200 font-bold shadow-sm"
-                title="貼り付け（挿入）"
+                title="クリップボードを表示"
               >
-                <Clipboard className="w-4 h-4" /> 挿入
+                <Clipboard className="w-4 h-4" />
+                クリップボードを表示
               </button>
-              <button
-                type="button"
-                onClick={onPasteOverwrite}
-                className="w-full flex items-center justify-center gap-2 bg-white hover:bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-200 font-bold shadow-sm"
-                title="貼り付け（上書き）"
-              >
-                <Clipboard className="w-4 h-4" /> 上書き
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>

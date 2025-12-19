@@ -63,6 +63,7 @@ export default function App() {
 
   // Clipboard State
   const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
+  const [isClipboardPanelOpen, setIsClipboardPanelOpen] = useState(true);
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
@@ -198,6 +199,7 @@ export default function App() {
         setSelectionDraftStartFrame(null);
         setIsSelectionMode(false);
         setClipboardClip(null);
+        setIsClipboardPanelOpen(true);
         setRecordingState(RecordingState.IDLE);
         recordingStartFrameRef.current = 0;
         recordingStartTimeRef.current = 0;
@@ -590,6 +592,7 @@ export default function App() {
 
       setTracks(nextTracks);
       setClipboardClip(nextClipboard);
+      setIsClipboardPanelOpen(true);
       setSelection(null);
       setSelectionDraftStartFrame(null);
     } catch (error) {
@@ -974,13 +977,15 @@ export default function App() {
         selectionCount={selectionCount}
         targetLabel={targetLabel}
         canPaste={clipboardClip !== null}
+        isClipboardPanelOpen={isClipboardPanelOpen}
         onCut={() => void handleCut()}
         onDelete={() => void handleDeleteSelection()}
         onClearSelection={() => {
           setSelection(null);
           setSelectionDraftStartFrame(null);
         }}
-        onClearClipboard={() => setClipboardClip(null)}
+        onHideClipboard={() => setIsClipboardPanelOpen(false)}
+        onShowClipboard={() => setIsClipboardPanelOpen(true)}
         onPasteInsert={() => void handlePasteInsert()}
         onPasteOverwrite={() => void handlePasteOverwrite()}
       />
