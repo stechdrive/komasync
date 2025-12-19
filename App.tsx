@@ -109,7 +109,7 @@ export default function App() {
   const vuAnimationFrameRef = useRef<number>(0);
   
   // Store source nodes for each track for mixed playback
-  const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+  const sourceNodesRef = useRef<Map<string, { source: AudioBufferSourceNode; gain: GainNode }>>(new Map());
   const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode }[]>([]);
   const scrubLastTimeRef = useRef(0);
   const isScrubbingRef = useRef(false);
@@ -292,6 +292,17 @@ export default function App() {
   };
 
   const toggleTrackMute = (trackId: string) => {
+    const currentMuted = tracks.find((track) => track.id === trackId)?.isMuted ?? false;
+    const nextMuted = !currentMuted;
+
+    if (recordingState === RecordingState.PLAYING || recordingState === RecordingState.RECORDING) {
+      const node = sourceNodesRef.current.get(trackId);
+      if (node) {
+        const ctxTime = audioContextRef.current?.currentTime ?? 0;
+        node.gain.gain.setValueAtTime(nextMuted ? 0 : 1, ctxTime);
+      }
+    }
+
     setTracks((prev) =>
       prev.map((track) => (track.id === trackId ? { ...track, isMuted: !track.isMuted } : track))
     );
@@ -391,21 +402,20 @@ export default function App() {
 
     // Create sources for all tracks
     tracks.forEach(track => {
-      // During recording, we might want to mute the active track to avoid doubling,
-      // but usually for overdubs you might want to hear what was there (if overwriting) or not.
-      // For now, we respect the mute flag.
-      if (track.audioBuffer && !track.isMuted) {
+      if (!track.audioBuffer) return;
+      const duration = track.audioBuffer.duration || 0;
+      if (duration > maxDuration) maxDuration = duration;
+
+      if (offsetTime < duration) {
         const source = ctx.createBufferSource();
         source.buffer = track.audioBuffer;
-        source.connect(ctx.destination);
-        
-        const duration = source.buffer?.duration || 0;
-        if (duration > maxDuration) maxDuration = duration;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(track.isMuted ? 0 : 1, ctx.currentTime);
 
-        if (offsetTime < duration) {
-          source.start(0, offsetTime);
-          sourceNodesRef.current.set(track.id, source);
-        }
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        source.start(0, offsetTime);
+        sourceNodesRef.current.set(track.id, { source, gain });
       }
     });
 
@@ -896,9 +906,10 @@ export default function App() {
   };
 
   const stopAllSources = () => {
-    sourceNodesRef.current.forEach(source => {
-      try { source.stop(); } catch(e) {}
-      source.disconnect();
+    sourceNodesRef.current.forEach(({ source, gain }) => {
+      try { source.stop(); } catch {}
+      try { source.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
     });
     sourceNodesRef.current.clear();
   };
@@ -1067,10 +1078,13 @@ export default function App() {
         return;
       }
 
+      if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) {
+        return;
+      }
+
       if (!e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         if (isHelpOpen || isMoreOpen) return;
         e.preventDefault();
-        if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
         if (recordingState === RecordingState.PLAYING) handlePause();
 
         const delta = e.key === 'ArrowUp' ? -1 : 1;
