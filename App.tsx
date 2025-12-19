@@ -30,6 +30,8 @@ const FPS = DEFAULT_FPS;
 const SCRUB_PREVIEW_SEC = 0.08;
 const SCRUB_FADE_SEC = 0.01;
 const SCRUB_THROTTLE_MS = 50;
+const MIC_SLEEP_MS = 5 * 60 * 1000;
+const MIC_SLEEP_CHECK_MS = 15 * 1000;
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -96,6 +98,11 @@ export default function App() {
   const pendingRecordStartRef = useRef(false);
   const lastSingleTrackIdRef = useRef<string>('1');
   const currentFrameRef = useRef(0);
+  const autoMicWarmupRef = useRef(false);
+  const lastActivityRef = useRef(Date.now());
+  const recordingStateRef = useRef(recordingState);
+  const isMicReadyRef = useRef(isMicReady);
+  const isMicPreparingRef = useRef(isMicPreparing);
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -118,6 +125,18 @@ export default function App() {
   useEffect(() => {
     currentFrameRef.current = currentFrame;
   }, [currentFrame]);
+
+  useEffect(() => {
+    recordingStateRef.current = recordingState;
+  }, [recordingState]);
+
+  useEffect(() => {
+    isMicReadyRef.current = isMicReady;
+  }, [isMicReady]);
+
+  useEffect(() => {
+    isMicPreparingRef.current = isMicPreparing;
+  }, [isMicPreparing]);
 
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
@@ -884,7 +903,7 @@ export default function App() {
     sourceNodesRef.current.clear();
   };
 
-  const stopMicStream = () => {
+  const stopMicStream = useCallback(() => {
     const stream = micStreamRef.current;
     pendingRecordStartRef.current = false;
     micPreparePromiseRef.current = null;
@@ -893,7 +912,7 @@ export default function App() {
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     micStreamRef.current = null;
-  };
+  }, []);
 
   const isStreamLive = (stream: MediaStream | null): boolean =>
     Boolean(stream && stream.getTracks().some((track) => track.readyState === 'live'));
@@ -927,6 +946,51 @@ export default function App() {
     micPreparePromiseRef.current = prepare;
     return prepare;
   }, []);
+
+  const maybeAutoWarmMic = useCallback(() => {
+    if (autoMicWarmupRef.current) return;
+    autoMicWarmupRef.current = true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    if (isStreamLive(micStreamRef.current) || isMicPreparingRef.current) return;
+    if (recordingStateRef.current === RecordingState.RECORDING || recordingStateRef.current === RecordingState.PROCESSING) return;
+    void ensureMicReady().catch(() => {
+      // no-op
+    });
+  }, [ensureMicReady]);
+
+  useEffect(() => {
+    const handleActivity = () => {
+      lastActivityRef.current = Date.now();
+      maybeAutoWarmMic();
+    };
+    window.addEventListener('pointerdown', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity);
+    return () => {
+      window.removeEventListener('pointerdown', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+    };
+  }, [maybeAutoWarmMic]);
+
+  useEffect(() => {
+    if (!isMicReady) return;
+    lastActivityRef.current = Date.now();
+    const intervalId = window.setInterval(() => {
+      if (!isMicReadyRef.current) return;
+      if (
+        recordingStateRef.current === RecordingState.RECORDING ||
+        recordingStateRef.current === RecordingState.PROCESSING ||
+        isMicPreparingRef.current
+      ) {
+        lastActivityRef.current = Date.now();
+        return;
+      }
+      if (Date.now() - lastActivityRef.current >= MIC_SLEEP_MS) {
+        stopMicStream();
+      }
+    }, MIC_SLEEP_CHECK_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isMicReady, stopMicStream]);
 
   const handlePause = () => {
     stopPlaybackLoop();
