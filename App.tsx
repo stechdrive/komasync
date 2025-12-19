@@ -12,6 +12,7 @@ import { exportTracksToZip } from './services/audioExporter';
 import { analyzeAudioBufferWithVad, getVadTuning, VadPreset } from './services/vad';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { TimesheetViewport } from './components/TimesheetViewport';
+import { HelpSheet } from './components/HelpSheet';
 import { AppShell } from './components/AppShell';
 import { EditPalette } from './components/EditPalette';
 import { MoreSheet } from './components/MoreSheet';
@@ -68,6 +69,7 @@ export default function App() {
   const [vadStability, setVadStability] = useState(0.6);
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   
@@ -864,7 +866,14 @@ export default function App() {
           onReset={handleResetProject}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          onOpenMore={() => setIsMoreOpen(true)}
+          onOpenHelp={() => {
+            setIsHelpOpen(true);
+            setIsMoreOpen(false);
+          }}
+          onOpenMore={() => {
+            setIsMoreOpen(true);
+            setIsHelpOpen(false);
+          }}
         />
       }
       bottom={
@@ -930,6 +939,8 @@ export default function App() {
         onChangeVadStability={setVadStability}
         onTogglePlayWhileRecording={() => setPlayWhileRecording((prev) => !prev)}
       />
+
+      <HelpSheet isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </AppShell>
   );
 }
