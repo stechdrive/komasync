@@ -17,6 +17,9 @@ type TimesheetViewportProps = {
   onOpenContextMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
   onTrackSelect?: (trackId: string) => void;
+  onScrubStart?: (frame: number) => void;
+  onScrubMove?: (frame: number) => void;
+  onScrubEnd?: () => void;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -34,6 +37,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onOpenContextMenu,
   onSelectionChange,
   onTrackSelect,
+  onScrubStart,
+  onScrubMove,
+  onScrubEnd,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFirstVisibleColRef = useRef<number | null>(null);
@@ -50,6 +56,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     x: number;
     y: number;
   } | null>(null);
+  const scrubPendingRef = useRef<{
+    frame: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const isScrubbingRef = useRef(false);
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -152,21 +164,45 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (e.target === e.currentTarget) onBackgroundClick?.();
   };
 
-  const getFrameTarget = (target: EventTarget | null): { frame: number; trackId: string | null } | null => {
+  const getTrackTarget = (target: EventTarget | null): { frame: number; trackId: string } | null => {
     if (!(target instanceof HTMLElement)) return null;
-    const cell = target.closest<HTMLElement>('[data-frame-index]');
+    const cell = target.closest<HTMLElement>('[data-frame-index][data-track-id]');
     if (!cell) return null;
     const frameAttr = cell.dataset.frameIndex;
     if (!frameAttr) return null;
     const frame = Number(frameAttr);
     if (Number.isNaN(frame)) return null;
-    const trackId = cell.dataset.trackId ?? null;
+    const trackId = cell.dataset.trackId;
+    if (!trackId) return null;
     return { frame, trackId };
   };
 
-  const getFrameAtPoint = (x: number, y: number): { frame: number; trackId: string | null } | null => {
+  const getTrackAtPoint = (x: number, y: number): { frame: number; trackId: string } | null => {
     const el = document.elementFromPoint(x, y);
-    return getFrameTarget(el);
+    return getTrackTarget(el);
+  };
+
+  const getRulerTarget = (target: EventTarget | null): { frame: number } | null => {
+    if (!(target instanceof HTMLElement)) return null;
+    const cell = target.closest<HTMLElement>('[data-frame-index][data-ruler]');
+    if (!cell) return null;
+    const frameAttr = cell.dataset.frameIndex;
+    if (!frameAttr) return null;
+    const frame = Number(frameAttr);
+    if (Number.isNaN(frame)) return null;
+    return { frame };
+  };
+
+  const getScrubFrameAtPoint = (x: number, y: number): number | null => {
+    const el = document.elementFromPoint(x, y);
+    if (!(el instanceof HTMLElement)) return null;
+    const cell = el.closest<HTMLElement>('[data-frame-index]');
+    if (!cell) return null;
+    const frameAttr = cell.dataset.frameIndex;
+    if (!frameAttr) return null;
+    const frame = Number(frameAttr);
+    if (Number.isNaN(frame)) return null;
+    return frame;
   };
 
   const clearLongPressTimer = () => {
@@ -187,11 +223,22 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    const target = getFrameTarget(e.target);
+    const rulerTarget = getRulerTarget(e.target);
+    const target = getTrackTarget(e.target);
     pendingTapRef.current = null;
+    scrubPendingRef.current = null;
     longPressActionRef.current = null;
     longPressTargetRef.current = null;
     longPressActiveRef.current = false;
+
+    if (rulerTarget) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      clearLongPressTimer();
+      longPressPointRef.current = null;
+      scrubPendingRef.current = { frame: rulerTarget.frame, x: e.clientX, y: e.clientY };
+      isScrubbingRef.current = false;
+      return;
+    }
 
     if (e.pointerType === 'mouse') {
       if (e.button !== 0 || !target) return;
@@ -239,6 +286,30 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (scrubPendingRef.current || isScrubbingRef.current) {
+      const pending = scrubPendingRef.current;
+      if (pending) {
+        const dx = e.clientX - pending.x;
+        const dy = e.clientY - pending.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 4) return;
+        if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
+          scrubPendingRef.current = null;
+          return;
+        }
+
+        isScrubbingRef.current = true;
+        scrubPendingRef.current = null;
+        onScrubStart?.(pending.frame);
+      }
+
+      if (isScrubbingRef.current) {
+        const frame = getScrubFrameAtPoint(e.clientX, e.clientY);
+        if (frame !== null) onScrubMove?.(frame);
+      }
+      return;
+    }
+
     const point = longPressPointRef.current;
     if (point) {
       const dx = e.clientX - point.x;
@@ -264,7 +335,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             selectionAnchorRef.current = anchorFrame;
             isSelectingRef.current = true;
             if (longPressTargetRef.current?.trackId) onTrackSelect?.(longPressTargetRef.current.trackId);
-            const target = getFrameAtPoint(e.clientX, e.clientY);
+            const target = getTrackAtPoint(e.clientX, e.clientY);
             const endFrame = target?.frame ?? anchorFrame;
             onSelectionChange?.({ startFrame: anchorFrame, endFrame });
             longPressPointRef.current = null;
@@ -277,7 +348,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (isSelectingRef.current) {
-      const target = getFrameAtPoint(e.clientX, e.clientY);
+      const target = getTrackAtPoint(e.clientX, e.clientY);
       if (!target || selectionAnchorRef.current === null) return;
       onSelectionChange?.({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
       return;
@@ -295,7 +366,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isSelectingRef.current = true;
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     onSelectionChange?.({ startFrame: pending.frame, endFrame: pending.frame });
-    const target = getFrameAtPoint(e.clientX, e.clientY);
+    const target = getTrackAtPoint(e.clientX, e.clientY);
     if (target) {
       onSelectionChange?.({ startFrame: pending.frame, endFrame: target.frame });
     }
@@ -307,6 +378,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const pending = pendingTapRef.current;
     const longPressAction = longPressActionRef.current;
     const longPressActive = longPressActiveRef.current;
+
+    if (scrubPendingRef.current) {
+      onFrameTap(scrubPendingRef.current.frame);
+      scrubPendingRef.current = null;
+      return;
+    }
+
+    if (isScrubbingRef.current) {
+      onScrubEnd?.();
+      isScrubbingRef.current = false;
+      return;
+    }
 
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
@@ -344,6 +427,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     clearLongPressTimer();
     longPressPointRef.current = null;
     pendingTapRef.current = null;
+    scrubPendingRef.current = null;
+    if (isScrubbingRef.current) onScrubEnd?.();
+    isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
     longPressActionRef.current = null;
@@ -380,7 +466,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               columnWidth={columnWidth}
               rulerWidth={rulerWidth}
               rowHeight={rowHeight}
-              onFrameTap={onFrameTap}
             />
           ))}
 

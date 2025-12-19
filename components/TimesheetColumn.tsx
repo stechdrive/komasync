@@ -17,7 +17,6 @@ type TimesheetColumnProps = {
   columnWidth: number;
   rulerWidth: number;
   rowHeight: number;
-  onFrameTap: (frame: number) => void;
 };
 
 const getRowBorderClass = (rowIndex: number, fps: number, isRuler: boolean): string => {
@@ -45,7 +44,6 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   columnWidth,
   rulerWidth,
   rowHeight,
-  onFrameTap,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
   const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
@@ -95,9 +93,10 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
             <React.Fragment key={rowIndex}>
               {/* ルーラー */}
               <div
-                className={`flex items-center justify-center font-mono select-none overflow-hidden ${rulerBorder} ${rulerTone} border-r border-gray-300`}
-                style={{ fontSize: rulerFontSize }}
-                onClick={() => onFrameTap(globalFrameIndex)}
+                data-frame-index={globalFrameIndex}
+                data-ruler="left"
+                className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
+                style={{ fontSize: rulerFontSize, touchAction: 'pan-x' }}
               >
                 {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
@@ -144,9 +143,10 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
 
               {/* 右ルーラー */}
               <div
-                className={`flex items-center justify-center font-mono select-none overflow-hidden ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: rulerFontSize }}
-                onClick={() => onFrameTap(globalFrameIndex)}
+                data-frame-index={globalFrameIndex}
+                data-ruler="right"
+                className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
+                style={{ fontSize: rulerFontSize, touchAction: 'pan-x' }}
               >
                 {isCurrent
                   ? formatTimecodeOneBased(globalFrameIndex, fps)
