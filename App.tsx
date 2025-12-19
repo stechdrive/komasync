@@ -93,6 +93,7 @@ export default function App() {
   const micPreparePromiseRef = useRef<Promise<MediaStream> | null>(null);
   const pendingRecordStartRef = useRef(false);
   const lastSingleTrackIdRef = useRef<string>('1');
+  const currentFrameRef = useRef(0);
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -111,6 +112,10 @@ export default function App() {
 
   // Stats (Calculate total max duration across all tracks)
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
+
+  useEffect(() => {
+    currentFrameRef.current = currentFrame;
+  }, [currentFrame]);
 
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
@@ -970,6 +975,32 @@ export default function App() {
   // --- Keyboard Shortcuts ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          target.closest('[contenteditable="true"]'))
+      ) {
+        return;
+      }
+
+      if (!e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        if (isHelpOpen || isMoreOpen) return;
+        e.preventDefault();
+        if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
+        if (recordingState === RecordingState.PLAYING) handlePause();
+
+        const delta = e.key === 'ArrowUp' ? -1 : 1;
+        const nextFrame = Math.max(0, currentFrameRef.current + delta);
+        currentFrameRef.current = nextFrame;
+        setCurrentFrame(nextFrame);
+        playScrubPreview(nextFrame);
+        return;
+      }
+
       // Undo: Ctrl+Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -1000,7 +1031,18 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, handleCut, handlePasteInsert, handlePasteOverwrite]);
+  }, [
+    handleUndo,
+    handleRedo,
+    handleCut,
+    handlePasteInsert,
+    handlePasteOverwrite,
+    handlePause,
+    isHelpOpen,
+    isMoreOpen,
+    playScrubPreview,
+    recordingState,
+  ]);
 
   const framesPerSheet = getFramesPerSheet(FPS);
   const sheetNumber = Math.floor(currentFrame / framesPerSheet) + 1;

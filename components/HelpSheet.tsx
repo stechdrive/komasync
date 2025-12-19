@@ -87,6 +87,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>Redo: Ctrl/Cmd + Y / Shift + Ctrl/Cmd + Z</li>
                 <li>Cut: Ctrl/Cmd + X</li>
                 <li>Paste: Ctrl/Cmd + V（Shiftで上書き）</li>
+                <li>Scrub: ↑ / ↓</li>
               </ul>
             </section>
 
