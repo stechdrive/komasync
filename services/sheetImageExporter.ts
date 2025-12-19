@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
+import { formatTimecode } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
 
 type ExportScope = { type: 'all' } | { type: 'sheet'; sheetIndex: number };
@@ -93,7 +94,7 @@ const drawSheetToCanvas = (
   ctx.fillStyle = '#6b7280';
   ctx.font = '500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
   ctx.fillText(
-    `${pad2(sheetStartSec)}–${pad2(sheetEndSec)}s（6秒 / 144コマ）`,
+    `${pad2(sheetStartSec)}–${pad2(sheetEndSec)}s（6秒 / 144コマ） 総 ${formatTimecode(maxFrames, fps)}`,
     config.margin + 160,
     config.margin + config.headerHeight / 2
   );
