@@ -758,9 +758,15 @@ export default function App() {
   const handlePlay = () => {
     const hasAudio = tracks.some(t => t.audioBuffer !== null);
     if (!hasAudio) return;
-    
+
+    const endFrame = Math.max(0, maxFrames - 1);
+    const startFrame = currentFrame >= endFrame ? 0 : currentFrame;
+    if (startFrame !== currentFrame) {
+      setCurrentFrame(startFrame);
+    }
+
     setRecordingState(RecordingState.PLAYING);
-    startPlayback(currentFrame, RecordingState.PLAYING);
+    startPlayback(startFrame, RecordingState.PLAYING);
   };
 
   const stopAllSources = () => {
@@ -974,6 +980,7 @@ export default function App() {
           setSelection(null);
           setSelectionDraftStartFrame(null);
         }}
+        onClearClipboard={() => setClipboardClip(null)}
         onPasteInsert={() => void handlePasteInsert()}
         onPasteOverwrite={() => void handlePasteOverwrite()}
       />
