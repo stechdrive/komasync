@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal, Redo2, RefreshCw, Undo2 } from 'lucide-react';
+import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Undo2 } from 'lucide-react';
 
 type TopBarProps = {
   sheetNumber: number;
@@ -11,6 +11,7 @@ type TopBarProps = {
   onReset: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onOpenHelp: () => void;
   onOpenMore: () => void;
 };
 
@@ -26,6 +27,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onReset,
   onUndo,
   onRedo,
+  onOpenHelp,
   onOpenMore,
 }) => {
   const timerRef = useRef<number | null>(null);
@@ -111,6 +113,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
           <button
             type="button"
+            onClick={onOpenHelp}
+            className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            title="ヘルプ"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
             onClick={onOpenMore}
             className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title="その他"
@@ -122,4 +132,3 @@ export const TopBar: React.FC<TopBarProps> = ({
     </div>
   );
 };
-
