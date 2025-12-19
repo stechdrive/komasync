@@ -1,11 +1,29 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { processAudioBuffer, blobToAudioBuffer, cutAudioBuffer, extractAudioSlice, overwriteAudioBuffer } from './services/audioProcessor';
+import { blobToAudioBuffer } from './services/audioProcessor';
+import {
+  cutAudioRangeWithSilence,
+  deleteAudioRangeRipple,
+  extractAudioRangePadded,
+  insertAudioAtFrame,
+  insertSilenceFramesAtFrame,
+  overwriteAudioAtFrame,
+} from './services/audioEdit';
 import { exportTracksToZip } from './services/audioExporter';
-import { TimesheetGrid } from './components/TimesheetGrid';
-import { FrameData, RecordingState, Track } from './types';
-import { Mic, Upload, Play, Pause, StopCircle, RefreshCw, Volume2, FileAudio, ZoomIn, ZoomOut, Maximize, Trash2, CheckSquare, Clock, Layers, Scissors, Clipboard, Undo2, Redo2, Headphones, Download } from 'lucide-react';
+import { analyzeAudioBufferWithVad, getVadTuning, VadPreset } from './services/vad';
+import { exportSheetImagesToZip } from './services/sheetImageExporter';
+import { TimesheetViewport } from './components/TimesheetViewport';
+import { AppShell } from './components/AppShell';
+import { EditPalette } from './components/EditPalette';
+import { MoreSheet } from './components/MoreSheet';
+import { TopBar } from './components/TopBar';
+import { TransportDock } from './components/TransportDock';
+import { useViewportHeight } from './hooks/useViewportHeight';
+import { RecordingState, Track } from './types';
+import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
+import { DEFAULT_FPS, getFramesPerSheet } from './domain/timesheet';
+import { formatTimecode } from './domain/timecode';
 
-const FPS = 24;
+const FPS = DEFAULT_FPS;
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -35,91 +53,80 @@ export default function App() {
   
   // Multi-track State
   const [tracks, setTracks] = useState<Track[]>(createInitialTracks());
-  const [activeTrackId, setActiveTrackId] = useState<string>('1');
+  const [recordTrackId, setRecordTrackId] = useState<string>('1');
+  const [editTarget, setEditTarget] = useState<EditTarget>('1');
 
   // History State for Undo/Redo
   const [historyPast, setHistoryPast] = useState<Track[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Track[][]>([]);
 
   // Clipboard State
-  const [clipboardBuffer, setClipboardBuffer] = useState<AudioBuffer | null>(null);
+  const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
 
   const [currentFrame, setCurrentFrame] = useState(0);
-  const [threshold, setThreshold] = useState(0.05);
-  const [rowHeight, setRowHeight] = useState(20);
+  const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
+  const [vadStability, setVadStability] = useState(0.6);
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [inputRms, setInputRms] = useState(0);
+  const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   
   // Selection State
-  const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set());
-  const [isSelectionMode, setIsSelectionMode] = useState(false); // For mobile multi-selection
-  const lastClickedFrameRef = useRef<number | null>(null);
-  
-  // Drag Selection State
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartFrame, setDragStartFrame] = useState<number | null>(null);
-  const [selectionSnapshot, setSelectionSnapshot] = useState<Set<number>>(new Set());
+  const [selection, setSelection] = useState<SelectionRange | null>(null);
+  const [selectionDraftStartFrame, setSelectionDraftStartFrame] = useState<number | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStartFrameRef = useRef<number>(0);
   const recordingStartTimeRef = useRef<number>(0);
+
+  const vuAnalyserRef = useRef<AnalyserNode | null>(null);
+  const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const vuAnimationFrameRef = useRef<number>(0);
   
   // Store source nodes for each track for mixed playback
   const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
   
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+
+  useViewportHeight();
 
   // Stats (Calculate total max duration across all tracks)
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
-  const durationSec = Math.floor(maxFrames / FPS);
-  const durationRemFrame = maxFrames % FPS;
 
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
-    // Initial Auto-Fit
-    handleFitToScreen();
-    
-    // Global pointer up to catch releases outside the grid
-    const handleGlobalPointerUp = () => {
-        if (isDragging) {
-            handleDragSelectEnd();
-        }
-    };
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-    window.addEventListener('resize', handleFitToScreen);
-    
     return () => {
+      stopAllSources();
+      stopVuMeter();
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
       cancelAnimationFrame(animationFrameRef.current);
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-      window.removeEventListener('resize', handleFitToScreen);
     };
-  }, [isDragging]);
+  }, []);
 
-  // Re-process when threshold changes
+  // Re-process when VAD settings change
   useEffect(() => {
-    // Note: Threshold changes usually don't need undo history as they are non-destructive view changes,
-    // but here we modify the derived 'frames' property. We won't push to history for threshold slider
+    // Note: VAD settings changes usually don't need undo history as they are non-destructive view changes,
+    // but here we modify the derived 'frames' property. We won't push to history for VAD調整
     // to avoid spamming the undo stack.
-    setTracks(prevTracks => prevTracks.map(track => {
-      if (track.audioBuffer) {
-        return {
-          ...track,
-          frames: processAudioBuffer(track.audioBuffer, threshold, FPS)
-        };
-      }
-      return track;
-    }));
-  }, [threshold]);
+    const tuning = getVadTuning(vadPreset, vadStability);
+    setTracks((prevTracks) =>
+      prevTracks.map((track) =>
+        track.audioBuffer ? { ...track, frames: analyzeAudioBufferWithVad(track.audioBuffer, FPS, tuning) } : { ...track, frames: [] }
+      )
+    );
+  }, [vadPreset, vadStability]);
 
   // --- History Management ---
+  const HISTORY_LIMIT = 30;
+
   const saveToHistory = useCallback(() => {
-    setHistoryPast(prev => [...prev, tracks]);
+    setHistoryPast(prev => [...prev.slice(-(HISTORY_LIMIT - 1)), tracks]);
     setHistoryFuture([]); // Clear future on new action
   }, [tracks]);
 
@@ -130,12 +137,19 @@ export default function App() {
     const newPast = historyPast.slice(0, -1);
     
     setHistoryFuture(prev => [tracks, ...prev]);
-    setTracks(previous);
+    setTracks(
+      previous.map((t) =>
+        t.audioBuffer
+          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability)) }
+          : { ...t, frames: [] }
+      )
+    );
     setHistoryPast(newPast);
     
     // Reset selection to avoid ghost selections
-    setSelectedFrames(new Set());
-  }, [historyPast, tracks]);
+    setSelection(null);
+    setSelectionDraftStartFrame(null);
+  }, [historyPast, tracks, vadPreset, vadStability]);
 
   const handleRedo = useCallback(() => {
     if (historyFuture.length === 0) return;
@@ -144,75 +158,41 @@ export default function App() {
     const newFuture = historyFuture.slice(1);
 
     setHistoryPast(prev => [...prev, tracks]);
-    setTracks(next);
+    setTracks(
+      next.map((t) =>
+        t.audioBuffer
+          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability)) }
+          : { ...t, frames: [] }
+      )
+    );
     setHistoryFuture(newFuture);
-  }, [historyFuture, tracks]);
+
+    setSelection(null);
+    setSelectionDraftStartFrame(null);
+  }, [historyFuture, tracks, vadPreset, vadStability]);
 
   const handleResetProject = () => {
-    if (window.confirm("プロジェクトを初期化しますか？\n現在の作業内容はすべて失われます。")) {
+    if (window.confirm("プロジェクトを初期化します。\n録音データも含め、現在の作業内容はすべて失われます。\nよろしいですか？")) {
         // Stop playback/recording first
         stopAllSources();
+        stopVuMeter();
         cancelAnimationFrame(animationFrameRef.current);
         
         // Reset all states
         setTracks(createInitialTracks());
         setHistoryPast([]);
         setHistoryFuture([]);
-        setActiveTrackId('1');
+        setRecordTrackId('1');
+        setEditTarget('1');
         setCurrentFrame(0);
-        setSelectedFrames(new Set());
-        setClipboardBuffer(null);
-        setDragStartFrame(null);
-        setSelectionSnapshot(new Set());
+        setSelection(null);
+        setSelectionDraftStartFrame(null);
+        setIsSelectionMode(false);
+        setClipboardClip(null);
         setRecordingState(RecordingState.IDLE);
-        lastClickedFrameRef.current = null;
         recordingStartFrameRef.current = 0;
         recordingStartTimeRef.current = 0;
     }
-  };
-
-  const handleExportCSV = () => {
-    if (tracks.every(t => t.frames.length === 0)) {
-        alert("エクスポートするデータがありません。");
-        return;
-    }
-
-    const maxLen = Math.max(...tracks.map(t => t.frames.length));
-    
-    // BOM for Excel compatibility (UTF-8 with BOM)
-    let csvContent = "\uFEFF";
-    
-    // Headers: Frame No, Time (sec+koma), Track Columns...
-    csvContent += "Frame,Time," + tracks.map(t => t.name.replace(/,/g, "")).join(",") + "\n";
-
-    for (let i = 0; i < maxLen; i++) {
-        const sec = Math.floor(i / FPS);
-        const frm = (i % FPS) + 1; // 1-based frame count for display
-        const timeStr = `${sec}+${frm}`;
-        
-        const row = [
-            i + 1, // Global Frame Count
-            timeStr
-        ];
-
-        tracks.forEach(t => {
-            const frame = t.frames[i];
-            // Mark with '〇' if speech (VAD active), otherwise empty
-            row.push(frame?.isSpeech ? "〇" : "");
-        });
-
-        csvContent += row.join(",") + "\n";
-    }
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    link.setAttribute("download", `komasync_sheet_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const handleExportAudio = async () => {
@@ -223,41 +203,30 @@ export default function App() {
         console.error(error);
     }
   };
-  
-  const handleBackgroundClick = () => {
-    if (selectedFrames.size > 0) {
-      setSelectedFrames(new Set());
-      lastClickedFrameRef.current = null;
+
+  const handleExportSheetImagesCurrent = async () => {
+    try {
+      const sheetIndex = Math.max(0, Math.floor(viewportFirstColumn / 2));
+      await exportSheetImagesToZip(tracks, FPS, { type: 'sheet', sheetIndex });
+    } catch (error: any) {
+      alert(error.message || 'シート画像のエクスポートに失敗しました。');
+      console.error(error);
     }
   };
 
-  // --- Keyboard Shortcuts ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        // Undo: Ctrl+Z
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-            e.preventDefault();
-            handleUndo();
-        }
-        // Redo: Ctrl+Y or Ctrl+Shift+Z
-        if (((e.ctrlKey || e.metaKey) && e.key === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
-            e.preventDefault();
-            handleRedo();
-        }
-        // Cut: Ctrl+X
-        if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
-            e.preventDefault();
-            handleCut();
-        }
-        // Paste: Ctrl+V
-        if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-            e.preventDefault();
-            handlePaste();
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, tracks, selectedFrames, activeTrackId, clipboardBuffer, currentFrame]);
+  const handleExportSheetImagesAll = async () => {
+    try {
+      await exportSheetImagesToZip(tracks, FPS, { type: 'all' });
+    } catch (error: any) {
+      alert(error.message || 'シート画像のエクスポートに失敗しました。');
+      console.error(error);
+    }
+  };
+  
+  const handleBackgroundClick = () => {
+    setSelection(null);
+    setSelectionDraftStartFrame(null);
+  };
 
 
   const updateTrack = (trackId: string, updates: Partial<Track>) => {
@@ -329,6 +298,53 @@ export default function App() {
     animationFrameRef.current = requestAnimationFrame(updateFrame);
   };
 
+  const stopVuMeter = () => {
+    if (vuAnimationFrameRef.current) {
+      cancelAnimationFrame(vuAnimationFrameRef.current);
+      vuAnimationFrameRef.current = 0;
+    }
+    try {
+      vuSourceRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+    vuSourceRef.current = null;
+    vuAnalyserRef.current = null;
+    setInputRms(0);
+  };
+
+  const startVuMeter = (stream: MediaStream) => {
+    stopVuMeter();
+
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+
+    source.connect(analyser);
+    vuSourceRef.current = source;
+    vuAnalyserRef.current = analyser;
+
+    const buffer = new Float32Array(analyser.fftSize);
+    const tick = () => {
+      const node = vuAnalyserRef.current;
+      if (!node) return;
+
+      node.getFloatTimeDomainData(buffer);
+      let sumSquares = 0;
+      for (let i = 0; i < buffer.length; i++) sumSquares += buffer[i] * buffer[i];
+      const rms = buffer.length > 0 ? Math.sqrt(sumSquares / buffer.length) : 0;
+      setInputRms((prev) => prev * 0.8 + rms * 0.2);
+      vuAnimationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    vuAnimationFrameRef.current = requestAnimationFrame(tick);
+  };
+
   const handleStartRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert("お使いのブラウザは録音機能をサポートしていません。");
@@ -345,6 +361,7 @@ export default function App() {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startVuMeter(stream);
       
       const mimeType = getSupportedMimeType();
       const options = mimeType ? { mimeType } : undefined;
@@ -367,6 +384,7 @@ export default function App() {
         const duration = Date.now() - recordingStartTimeRef.current;
         if (duration < 200) {
              console.warn("Recording too short, discarded.");
+             stopVuMeter();
              stream.getTracks().forEach(track => track.stop());
              stopAllSources();
              cancelAnimationFrame(animationFrameRef.current);
@@ -376,6 +394,7 @@ export default function App() {
 
         if (audioChunksRef.current.length === 0 || (audioChunksRef.current.length === 1 && audioChunksRef.current[0].size === 0)) {
              console.warn("Recording was empty.");
+             stopVuMeter();
              stream.getTracks().forEach(track => track.stop());
              stopAllSources();
              cancelAnimationFrame(animationFrameRef.current);
@@ -387,8 +406,9 @@ export default function App() {
         const audioBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
         
         // Pass the start frame to the loader to overwrite at correct position
-        await loadAudioBlobToTrack(audioBlob, activeTrackId, recordingStartFrameRef.current);
+        await loadAudioBlobToTrack(audioBlob, recordTrackId, recordingStartFrameRef.current);
         
+        stopVuMeter();
         // Properly stop all tracks
         stream.getTracks().forEach(track => track.stop());
         
@@ -435,6 +455,7 @@ export default function App() {
 
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && recordingState === RecordingState.RECORDING) {
+      stopVuMeter();
       mediaRecorderRef.current.stop();
       // State change to PROCESSING happens in onstop
       setRecordingState(RecordingState.PROCESSING);
@@ -457,32 +478,14 @@ export default function App() {
       const track = tracks.find(t => t.id === trackId);
       let finalBuffer = newClipBuffer;
 
-      // 3. If track exists and we are inserting (overdubbing/punch-in)
-      //    We merge the new clip into the existing buffer
+      // 3. If track exists, merge the new clip into the existing buffer
       if (track) {
-         let baseBuffer = track.audioBuffer;
-         // If track has no buffer yet, create a silent one up to the insertion point if needed, or just use clip
-         if (!baseBuffer) {
-             if (insertAtFrame > 0) {
-                 // Create silence up to insert point is a bit complex, simpler to just treat new clip as start
-                 // But strictly, we should pad silence. 
-                 // For now, 'overwriteAudioBuffer' handles expanding.
-                 // We create a dummy empty buffer of length 1 to serve as base.
-                 baseBuffer = audioContextRef.current.createBuffer(1, 1, audioContextRef.current.sampleRate);
-             } else {
-                 baseBuffer = newClipBuffer; // Just use the new one
-             }
-         }
-
-         // Use overwrite logic if we have a base and we are not just replacing everything from 0 (though overwrite at 0 is also valid)
-         // Note: If we just uploaded a file (File Upload), insertAtFrame is usually 0.
-         // If we recorded, insertAtFrame is where we started.
-         if (track.audioBuffer || insertAtFrame > 0) {
-             finalBuffer = overwriteAudioBuffer(baseBuffer, newClipBuffer, insertAtFrame, FPS);
-         }
+        if (track.audioBuffer || insertAtFrame > 0) {
+          finalBuffer = overwriteAudioAtFrame(track.audioBuffer, newClipBuffer, insertAtFrame, FPS);
+        }
       }
 
-      const newFrames = processAudioBuffer(finalBuffer, threshold, FPS);
+      const newFrames = analyzeAudioBufferWithVad(finalBuffer, FPS, getVadTuning(vadPreset, vadStability));
       
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
@@ -492,9 +495,8 @@ export default function App() {
       setRecordingState(RecordingState.IDLE);
       // Do not reset current frame to 0, let user stay where they are or seek manually
       // setCurrentFrame(0); 
-      setSelectedFrames(new Set());
-      lastClickedFrameRef.current = null;
-      setTimeout(handleFitToScreen, 10);
+      setSelection(null);
+      setSelectionDraftStartFrame(null);
     } catch (e: any) {
       console.error("Error loading audio blob:", e);
       // More user friendly error
@@ -513,104 +515,223 @@ export default function App() {
       // For file upload, we usually want to replace or insert at 0? 
       // Let's assume file upload replaces from 0 for now, or we could insert at cursor.
       // Current behavior expectation is likely "Load this file into track", so start at 0.
-      loadAudioBlobToTrack(file, activeTrackId, 0);
+      loadAudioBlobToTrack(file, recordTrackId, 0);
       e.target.value = ''; 
     }
   };
 
   // --- Audio Editing ---
 
+  const getProjectSampleRate = (): number => {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') return audioContextRef.current.sampleRate;
+    return tracks.find((t) => t.audioBuffer)?.audioBuffer?.sampleRate ?? 48000;
+  };
+
+  const getNormalizedSelection = (): { startFrame: number; endFrame: number } | null => {
+    if (!selection) return null;
+    const startFrame = Math.max(0, Math.floor(Math.min(selection.startFrame, selection.endFrame)));
+    const endFrame = Math.max(startFrame, Math.floor(Math.max(selection.startFrame, selection.endFrame)));
+    return { startFrame, endFrame };
+  };
+
   const handleCut = async () => {
-    const activeTrack = tracks.find(t => t.id === activeTrackId);
-    if (selectedFrames.size === 0 || !activeTrack || !activeTrack.audioBuffer) return;
-    
+    const range = getNormalizedSelection();
+    if (!range) return;
+
     if (recordingState === RecordingState.PLAYING) handlePause();
 
     try {
       saveToHistory();
 
-      // 1. Determine Range
-      const sortedFrames: number[] = [...selectedFrames].sort((a, b) => a - b);
-      const startFrame = sortedFrames[0];
-      const endFrame = sortedFrames[sortedFrames.length - 1];
+      const projectSampleRate = getProjectSampleRate();
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
 
-      // 2. Extract to Clipboard
-      const clip = extractAudioSlice(activeTrack.audioBuffer, startFrame, endFrame, FPS);
-      if (clip) {
-          setClipboardBuffer(clip);
-      }
+      const nextClipboard: ClipboardClip = {
+        kind: editTarget === 'all' ? 'all' : 'single',
+        byTrackId: {},
+      };
 
-      // 3. Delete from Track
-      const newBuffer = cutAudioBuffer(activeTrack.audioBuffer, selectedFrames, FPS);
-      const newFrames = processAudioBuffer(newBuffer, threshold, FPS);
-      
-      updateTrack(activeTrackId, {
+      const nextTracks = tracks.map((track) => {
+        if (!targetSet.has(track.id)) return track;
+
+        nextClipboard.byTrackId[track.id] = extractAudioRangePadded(track.audioBuffer, range.startFrame, range.endFrame, FPS, {
+          sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
+          numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
+        });
+
+        if (!track.audioBuffer) return track;
+
+        const { newBuffer } = cutAudioRangeWithSilence(track.audioBuffer, range.startFrame, range.endFrame, FPS);
+        return {
+          ...track,
           audioBuffer: newBuffer,
-          frames: newFrames
+          frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)),
+        };
       });
 
-      setSelectedFrames(new Set());
-      lastClickedFrameRef.current = null;
-      setCurrentFrame(0);
-      
+      setTracks(nextTracks);
+      setClipboardClip(nextClipboard);
+      setSelection(null);
+      setSelectionDraftStartFrame(null);
     } catch (error) {
-      console.error("Cut failed:", error);
-      alert("カット操作に失敗しました。");
+      console.error('Cut failed:', error);
+      alert('切り取り操作に失敗しました。');
     }
   };
 
-  const handlePaste = async () => {
-    const activeTrack = tracks.find(t => t.id === activeTrackId);
-    if (!clipboardBuffer || !activeTrack) return;
-    
+  const handleDeleteSelection = async () => {
+    const range = getNormalizedSelection();
+    if (!range) return;
+
     if (recordingState === RecordingState.PLAYING) handlePause();
 
     try {
       saveToHistory();
-      
-      let baseBuffer = activeTrack.audioBuffer;
-      
-      if (!baseBuffer) {
-        if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        baseBuffer = audioContextRef.current.createBuffer(1, 1, 44100); // Dummy
-      }
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
 
-      // Overwrite
-      const newBuffer = overwriteAudioBuffer(baseBuffer, clipboardBuffer, currentFrame, FPS);
-      const newFrames = processAudioBuffer(newBuffer, threshold, FPS);
-      
-      updateTrack(activeTrackId, {
-          audioBuffer: newBuffer,
-          frames: newFrames
+      const nextTracks = tracks.map((track) => {
+        if (!targetSet.has(track.id) || !track.audioBuffer) return track;
+
+        const newBuffer = deleteAudioRangeRipple(track.audioBuffer, range.startFrame, range.endFrame, FPS);
+        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
       });
-      
+
+      setTracks(nextTracks);
+      setSelection(null);
+      setSelectionDraftStartFrame(null);
+      setCurrentFrame(range.startFrame);
     } catch (error) {
-       console.error("Paste failed:", error);
-       alert("ペースト操作に失敗しました。");
+      console.error('Delete failed:', error);
+      alert('削除操作に失敗しました。');
     }
   };
 
-  const handleDeleteSelected = async () => {
-    const activeTrack = tracks.find(t => t.id === activeTrackId);
-    if (selectedFrames.size === 0 || !activeTrack || !activeTrack.audioBuffer) return;
-
+  const handlePasteInsert = async () => {
+    if (!clipboardClip) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
 
     try {
       saveToHistory();
-      const newBuffer = cutAudioBuffer(activeTrack.audioBuffer, selectedFrames, FPS);
-      const newFrames = processAudioBuffer(newBuffer, threshold, FPS);
-      updateTrack(activeTrackId, {
-          audioBuffer: newBuffer,
-          frames: newFrames
+
+      if (editTarget === 'all') {
+        if (clipboardClip.kind !== 'all') {
+          alert('全トラック貼り付けには、全トラックの切り取りクリップが必要です。');
+          return;
+        }
+
+        const missing = tracks.find((t) => !clipboardClip.byTrackId[t.id]);
+        if (missing) {
+          alert('クリップデータが不足しています。もう一度切り取りしてください。');
+          return;
+        }
+
+        setTracks(
+          tracks.map((track) => {
+            const clip = clipboardClip.byTrackId[track.id];
+            const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+          })
+        );
+      } else {
+        const clip = clipboardClip.byTrackId[editTarget];
+        if (!clip) {
+          alert('対象トラックのクリップがありません。');
+          return;
+        }
+
+        setTracks(
+          tracks.map((track) => {
+            if (track.id !== editTarget) return track;
+            const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+          })
+        );
+      }
+
+      setSelection(null);
+      setSelectionDraftStartFrame(null);
+    } catch (error) {
+      console.error('Paste insert failed:', error);
+      alert('貼り付け（挿入）に失敗しました。');
+    }
+  };
+
+  const handlePasteOverwrite = async () => {
+    if (!clipboardClip) return;
+    if (recordingState === RecordingState.PLAYING) handlePause();
+
+    try {
+      saveToHistory();
+
+      if (editTarget === 'all') {
+        if (clipboardClip.kind !== 'all') {
+          alert('全トラック貼り付けには、全トラックの切り取りクリップが必要です。');
+          return;
+        }
+
+        const missing = tracks.find((t) => !clipboardClip.byTrackId[t.id]);
+        if (missing) {
+          alert('クリップデータが不足しています。もう一度切り取りしてください。');
+          return;
+        }
+
+        setTracks(
+          tracks.map((track) => {
+            const clip = clipboardClip.byTrackId[track.id];
+            const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+          })
+        );
+      } else {
+        const clip = clipboardClip.byTrackId[editTarget];
+        if (!clip) {
+          alert('対象トラックのクリップがありません。');
+          return;
+        }
+
+        setTracks(
+          tracks.map((track) => {
+            if (track.id !== editTarget) return track;
+            const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+          })
+        );
+      }
+
+      setSelection(null);
+      setSelectionDraftStartFrame(null);
+    } catch (error) {
+      console.error('Paste overwrite failed:', error);
+      alert('貼り付け（上書き）に失敗しました。');
+    }
+  };
+
+  const handleInsertOneFrame = async () => {
+    if (recordingState === RecordingState.PLAYING) handlePause();
+
+    try {
+      saveToHistory();
+      const projectSampleRate = getProjectSampleRate();
+
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
+
+      const nextTracks = tracks.map((track) => {
+        if (!targetSet.has(track.id)) return track;
+        const newBuffer = insertSilenceFramesAtFrame(track.audioBuffer, currentFrame, 1, FPS, {
+          sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
+          numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
+        });
+        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
       });
 
-      setSelectedFrames(new Set());
-      lastClickedFrameRef.current = null;
-      setCurrentFrame(0);
-      setTimeout(handleFitToScreen, 10);
+      setTracks(nextTracks);
+      setCurrentFrame((prev) => prev + 1);
     } catch (error) {
-      console.error("Delete failed:", error);
+      console.error('Insert 1f failed:', error);
+      alert('+1f 挿入に失敗しました。');
     }
   };
 
@@ -638,373 +759,169 @@ export default function App() {
     setRecordingState(RecordingState.PAUSED);
   };
 
-  const handleSeek = (frame: number, e: React.MouseEvent) => {
+  const handleFrameTap = (frame: number) => {
+    const nextFrame = Math.max(0, Math.floor(frame));
+
     if (recordingState === RecordingState.PLAYING) {
       handlePause();
     }
 
-    const newSelected = new Set(selectedFrames);
-    const last = lastClickedFrameRef.current;
+    setCurrentFrame(nextFrame);
 
-    if (e.shiftKey && last !== null) {
-      const start = Math.min(last, frame);
-      const end = Math.max(last, frame);
-      
-      if (!e.ctrlKey && !e.metaKey) {
-        newSelected.clear();
+    if (!isSelectionMode) {
+      setSelectionDraftStartFrame(null);
+      return;
+    }
+
+    if (selectionDraftStartFrame === null) {
+      setSelectionDraftStartFrame(nextFrame);
+      setSelection({ startFrame: nextFrame, endFrame: nextFrame });
+      return;
+    }
+
+    setSelection({ startFrame: selectionDraftStartFrame, endFrame: nextFrame });
+    setSelectionDraftStartFrame(null);
+  };
+
+  const handleSelectTarget = (target: EditTarget) => {
+    setEditTarget(target);
+    if (target !== 'all') setRecordTrackId(target);
+  };
+
+  const handleToggleSelectionMode = () => {
+    setIsSelectionMode((prev) => {
+      const next = !prev;
+      if (prev) {
+        setSelectionDraftStartFrame(null);
       }
-      for (let i = start; i <= end; i++) newSelected.add(i);
-    } else if (e.ctrlKey || e.metaKey) {
-      if (newSelected.has(frame)) newSelected.delete(frame);
-      else newSelected.add(frame);
-      lastClickedFrameRef.current = frame;
-    } else {
-      newSelected.clear();
-      newSelected.add(frame);
-      lastClickedFrameRef.current = frame;
-    }
-
-    setSelectedFrames(newSelected);
-    setCurrentFrame(frame);
+      return next;
+    });
   };
 
-  // --- Drag Selection Handlers ---
-  const handleDragSelectStart = (frame: number) => {
-    if (!isSelectionMode) return;
-    setIsDragging(true);
-    setDragStartFrame(frame);
-    setSelectionSnapshot(new Set(selectedFrames));
-    lastClickedFrameRef.current = frame; 
-    setCurrentFrame(frame);
-    
-    const newSet = new Set(selectedFrames);
-    if (!newSet.has(frame)) {
-        newSet.add(frame);
-        setSelectedFrames(newSet);
-    }
-  };
+  // --- Keyboard Shortcuts ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')
+      ) {
+        e.preventDefault();
+        handleRedo();
+      }
+      // Cut: Ctrl+X
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+        e.preventDefault();
+        void handleCut();
+      }
+      // Paste: Ctrl+V（Shiftで上書き）
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          void handlePasteOverwrite();
+        } else {
+          void handlePasteInsert();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, handleCut, handlePasteInsert, handlePasteOverwrite]);
 
-  const handleDragSelectEnter = (frame: number) => {
-    if (!isDragging || dragStartFrame === null || !isSelectionMode) return;
-    const start = Math.min(dragStartFrame, frame);
-    const end = Math.max(dragStartFrame, frame);
-    const newSet = new Set(selectionSnapshot);
-    for (let i = start; i <= end; i++) newSet.add(i);
-    setSelectedFrames(newSet);
-    setCurrentFrame(frame);
-  };
+  const framesPerSheet = getFramesPerSheet(FPS);
+  const sheetNumber = Math.floor(currentFrame / framesPerSheet) + 1;
 
-  const handleDragSelectEnd = () => {
-    setIsDragging(false);
-    setDragStartFrame(null);
-    setSelectionSnapshot(new Set());
-  };
+  const totalTimecode = formatTimecode(maxFrames, FPS);
+  const hasAudio = tracks.some((t) => t.audioBuffer !== null);
 
-  const handleFitToScreen = () => {
-    if (containerRef.current) {
-      const containerHeight = containerRef.current.clientHeight;
-      const availableForRows = containerHeight - 86;
-      const isMobile = window.innerWidth < 768;
-      const minHeight = isMobile ? 16 : 4; 
-      const fitHeight = Math.max(minHeight, availableForRows / 72);
-      setRowHeight(fitHeight);
-    }
-  };
+  const targetLabel =
+    editTarget === 'all' ? '全トラック' : tracks.find((t) => t.id === editTarget)?.name ?? `Track ${editTarget}`;
 
-  const handleZoomIn = () => setRowHeight(prev => Math.min(100, prev * 1.2));
-  const handleZoomOut = () => setRowHeight(prev => Math.max(4, prev / 1.2));
+  const selectionRange = getNormalizedSelection();
+  const selectionCount = selectionRange ? selectionRange.endFrame - selectionRange.startFrame + 1 : 0;
+  const selectionTimecode = selectionRange ? formatTimecode(selectionCount, FPS) : undefined;
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
-        {/* Mobile Header */}
-        <div className="md:hidden h-10 bg-indigo-600 text-white flex items-center px-3 justify-between shrink-0 z-30 shadow-md">
-            <h1 className="font-bold flex items-center gap-1 text-xs">
-                <button onClick={handleResetProject} className="hover:text-indigo-200 transition-colors p-1" title="プロジェクトをリセット">
-                    <RefreshCw className="w-3 h-3" />
-                </button>
-                 <button onClick={handleExportCSV} className="hover:text-indigo-200 transition-colors p-1" title="エクセル形式でエクスポート">
-                    <Download className="w-3 h-3" />
-                </button>
-                 <button onClick={handleExportAudio} className="hover:text-indigo-200 transition-colors p-1" title="音声をZIPでエクスポート">
-                    <FileAudio className="w-3 h-3" />
-                </button>
-                <span className="ml-1">KomaSync</span>
-            </h1>
-            <div className="flex items-center gap-2">
-                 {/* Mobile Undo/Redo */}
-                 <button onClick={handleUndo} disabled={historyPast.length===0} className="p-1 disabled:opacity-30"><Undo2 className="w-3 h-3" /></button>
-                 <button onClick={handleRedo} disabled={historyFuture.length===0} className="p-1 disabled:opacity-30"><Redo2 className="w-3 h-3" /></button>
+    <AppShell
+      top={
+        <TopBar
+          sheetNumber={sheetNumber}
+          totalTimecode={totalTimecode}
+          selectionTimecode={selectionTimecode}
+          isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
+          isUndoDisabled={historyPast.length === 0}
+          isRedoDisabled={historyFuture.length === 0}
+          onReset={handleResetProject}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onOpenMore={() => setIsMoreOpen(true)}
+        />
+      }
+      bottom={
+        <TransportDock
+          recordingState={recordingState}
+          hasAudio={hasAudio}
+          tracks={tracks}
+          recordTrackId={recordTrackId}
+          editTarget={editTarget}
+          isSelectionMode={isSelectionMode}
+          onSelectTarget={handleSelectTarget}
+          onToggleSelectionMode={handleToggleSelectionMode}
+          onInsertOneFrame={() => void handleInsertOneFrame()}
+          onStartRecording={handleStartRecording}
+          onStopRecording={handleStopRecording}
+          onPlay={handlePlay}
+          onPause={handlePause}
+        />
+      }
+    >
+      <TimesheetViewport
+        tracks={tracks}
+        currentFrame={currentFrame}
+        editTarget={editTarget}
+        selection={selection}
+        fps={FPS}
+        onFrameTap={handleFrameTap}
+        onBackgroundClick={handleBackgroundClick}
+        onFirstVisibleColumnChange={setViewportFirstColumn}
+      />
 
-                 <div className="flex flex-col items-end leading-none mr-1 ml-1">
-                    <span className="text-[8px] opacity-70 tracking-tighter">TOTAL</span>
-                    <span className="text-[10px] font-mono font-bold">{durationSec}s+{durationRemFrame}</span>
-                 </div>
-                 <div className="font-mono text-xs bg-indigo-700 px-2 py-0.5 rounded border border-indigo-500 min-w-[50px] text-center">
-                    {currentFrame}
-                 </div>
-            </div>
-        </div>
+      <EditPalette
+        selectionCount={selectionCount}
+        targetLabel={targetLabel}
+        canPaste={clipboardClip !== null}
+        onCut={() => void handleCut()}
+        onDelete={() => void handleDeleteSelection()}
+        onClearSelection={() => {
+          setSelection(null);
+          setSelectionDraftStartFrame(null);
+        }}
+        onPasteInsert={() => void handlePasteInsert()}
+        onPasteOverwrite={() => void handlePasteOverwrite()}
+      />
 
-        {/* Main Content: Timesheet */}
-        <div 
-            ref={containerRef}
-            className="flex-1 flex flex-col h-full overflow-hidden bg-gray-200 relative order-1 md:order-2"
-        >
-            <TimesheetGrid 
-              tracks={tracks}
-              activeTrackId={activeTrackId}
-              currentFrame={currentFrame} 
-              selectedFrames={selectedFrames}
-              fps={FPS}
-              rowHeight={rowHeight}
-              onSeek={handleSeek}
-              isSelectionMode={isSelectionMode}
-              onDragStart={handleDragSelectStart}
-              onDragEnter={handleDragSelectEnter}
-              onDragEnd={handleDragSelectEnd}
-              onBackgroundClick={handleBackgroundClick}
-            />
-        </div>
-
-        {/* Controls */}
-        <div className="w-full md:w-80 bg-white border-t md:border-t-0 md:border-r border-gray-200 z-20 order-2 md:order-1 shrink-0 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] md:shadow-none safe-area-bottom flex flex-col">
-            {/* Desktop Header */}
-            <div className="hidden md:flex p-6 border-b border-gray-200 bg-indigo-600 text-white flex-col">
-                 <div className="flex justify-between items-start">
-                    <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                         <div className="flex items-center gap-1">
-                            <button onClick={handleResetProject} className="hover:text-indigo-200 transition-colors p-1 rounded hover:bg-indigo-700" title="プロジェクトをリセット">
-                                <RefreshCw className="w-5 h-5" />
-                            </button>
-                             <button onClick={handleExportCSV} className="hover:text-indigo-200 transition-colors p-1 rounded hover:bg-indigo-700" title="エクセル形式でエクスポート">
-                                <Download className="w-5 h-5" />
-                            </button>
-                            <button onClick={handleExportAudio} className="hover:text-indigo-200 transition-colors p-1 rounded hover:bg-indigo-700" title="音声をZIPでエクスポート">
-                                <FileAudio className="w-5 h-5" />
-                            </button>
-                         </div>
-                        KomaSync
-                    </h1>
-                    {/* Desktop Undo/Redo */}
-                    <div className="flex gap-1 bg-indigo-700 rounded-lg p-1">
-                        <button onClick={handleUndo} disabled={historyPast.length===0} className="p-1.5 hover:bg-indigo-600 rounded disabled:opacity-30 text-indigo-100"><Undo2 className="w-4 h-4" /></button>
-                        <div className="w-px bg-indigo-500 my-1"></div>
-                        <button onClick={handleRedo} disabled={historyFuture.length===0} className="p-1.5 hover:bg-indigo-600 rounded disabled:opacity-30 text-indigo-100"><Redo2 className="w-4 h-4" /></button>
-                    </div>
-                 </div>
-
-                 <p className="text-indigo-100 text-xs mt-2">音声検出タイムシート生成</p>
-
-                 <div className="mt-4 bg-indigo-700/40 rounded-lg p-3 border border-indigo-500/30">
-                    <div className="text-indigo-200 text-xs mb-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> 合計デュレーション
-                    </div>
-                    <div className="text-white font-mono text-xl font-bold flex items-baseline gap-2">
-                        {durationSec}<span className="text-sm font-normal text-indigo-300">秒</span> 
-                        + {durationRemFrame}<span className="text-sm font-normal text-indigo-300">コマ</span>
-                    </div>
-                 </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-2 md:p-6 space-y-2 md:space-y-6">
-                
-                {/* Mobile Toolbar */}
-                <div className="flex md:hidden items-center justify-between gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
-                    <div className="flex items-center gap-1 shrink-0">
-                         <button onClick={handleZoomOut} className="p-1 text-gray-500"><ZoomOut className="w-4 h-4" /></button>
-                         <button onClick={handleFitToScreen} className="p-1 text-indigo-600"><Maximize className="w-3 h-3" /></button>
-                         <button onClick={handleZoomIn} className="p-1 text-gray-500"><ZoomIn className="w-4 h-4" /></button>
-                    </div>
-                    <div className="w-px h-4 bg-gray-300"></div>
-                    <div className="flex items-center flex-1 min-w-0 gap-1">
-                        <button 
-                            onClick={() => setPlayWhileRecording(!playWhileRecording)}
-                            className={`p-1 shrink-0 rounded transition-colors ${playWhileRecording ? 'text-indigo-600 bg-indigo-100' : 'text-gray-400'}`}
-                        >
-                            <Headphones className="w-3 h-3" />
-                        </button>
-                        <input 
-                            type="range" 
-                            min="0.01" 
-                            max="0.5" 
-                            step="0.01" 
-                            value={threshold} 
-                            onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                        />
-                    </div>
-                    <div className="w-px h-4 bg-gray-300"></div>
-                    <button 
-                        onClick={() => setIsSelectionMode(!isSelectionMode)}
-                        className={`p-1.5 rounded transition-colors ${
-                            isSelectionMode 
-                            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300' 
-                            : 'text-gray-400 hover:bg-gray-200'
-                        }`}
-                    >
-                        <CheckSquare className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Desktop: Frame Counter & Zoom */}
-                <div className="hidden md:flex items-center justify-between gap-2">
-                     <div className="font-mono text-lg text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-200 min-w-[80px] text-center">
-                        {currentFrame} <span className="text-xs text-gray-400">frm</span>
-                     </div>
-                     <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 p-0.5">
-                        <button onClick={handleZoomOut} className="p-1.5 hover:bg-gray-200 rounded text-gray-600"><ZoomOut className="w-4 h-4" /></button>
-                        <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
-                        <button onClick={handleFitToScreen} className="p-1.5 hover:bg-gray-200 rounded text-indigo-600"><Maximize className="w-4 h-4" /></button>
-                        <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
-                        <button onClick={handleZoomIn} className="p-1.5 hover:bg-gray-200 rounded text-gray-600"><ZoomIn className="w-4 h-4" /></button>
-                     </div>
-                </div>
-
-                {/* Desktop: Threshold & Settings */}
-                <div className="hidden md:flex flex-col gap-2">
-                    <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
-                        <Volume2 className="w-4 h-4 text-gray-400 shrink-0" />
-                        <input 
-                            type="range" 
-                            min="0.01" 
-                            max="0.5" 
-                            step="0.01" 
-                            value={threshold} 
-                            onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                        />
-                    </div>
-                    <div className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200">
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Headphones className="w-4 h-4" /> 録音中の再生
-                        </div>
-                        <button 
-                            onClick={() => setPlayWhileRecording(!playWhileRecording)}
-                            className={`w-8 h-4 rounded-full transition-colors relative ${playWhileRecording ? 'bg-indigo-600' : 'bg-gray-300'}`}
-                        >
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${playWhileRecording ? 'translate-x-4' : 'translate-x-0'}`} />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Selection / Clipboard Actions */}
-                <div className="space-y-2">
-                    {/* Clipboard Paste Action */}
-                    {clipboardBuffer && (
-                         <button 
-                            onClick={handlePaste}
-                            className="w-full flex items-center justify-center gap-2 bg-indigo-50 p-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                         >
-                            <Clipboard className="w-4 h-4" />
-                            <span className="text-xs font-bold">現在のコマにペースト ({currentFrame})</span>
-                         </button>
-                    )}
-
-                    {/* Selection Actions */}
-                    {selectedFrames.size > 0 && (
-                      <div className="flex flex-col gap-2 bg-blue-50 p-2 rounded-lg border border-blue-200 animate-in fade-in slide-in-from-bottom-2">
-                          <div className="flex justify-between items-center mb-1">
-                              <div className="text-xs text-blue-700 font-bold">{selectedFrames.size}コマ選択中</div>
-                              <div className="text-[10px] text-blue-500">{tracks.find(t=>t.id===activeTrackId)?.name}</div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-1">
-                             <button 
-                                onClick={handleCut}
-                                className="flex items-center justify-center gap-1 bg-white hover:bg-blue-100 text-blue-700 px-2 py-1.5 rounded border border-blue-100 text-xs font-bold shadow-sm"
-                                title="カット (Ctrl+X)"
-                              >
-                                <Scissors className="w-3 h-3" /> カット
-                              </button>
-                              <button 
-                                onClick={handleDeleteSelected}
-                                className="flex items-center justify-center gap-1 bg-red-100 hover:bg-red-200 text-red-600 px-2 py-1.5 rounded border border-red-200 text-xs font-bold shadow-sm"
-                              >
-                                <Trash2 className="w-3 h-3" /> 削除
-                              </button>
-                          </div>
-                          <div className="text-[10px] text-center text-blue-400 mt-0.5">カットして移動先にペースト可能</div>
-                      </div>
-                    )}
-                </div>
-                
-                {/* Track Switcher */}
-                <div className="flex bg-gray-100 p-1 rounded-lg gap-1">
-                    {tracks.map(track => {
-                        const isActive = activeTrackId === track.id;
-                        return (
-                            <button
-                                key={track.id}
-                                onClick={() => setActiveTrackId(track.id)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-bold transition-all border-b-2 ${
-                                    isActive 
-                                    ? `bg-white shadow-sm text-${track.color}-700 border-${track.color}-500` 
-                                    : 'text-gray-400 border-transparent hover:bg-gray-200 hover:text-gray-600'
-                                }`}
-                            >
-                                <div className={`w-2 h-2 rounded-full ${isActive ? `bg-${track.color}-500` : `bg-${track.color}-300 grayscale opacity-50`}`} />
-                                {track.name}
-                            </button>
-                        )
-                    })}
-                </div>
-
-                {/* Main Actions */}
-                <div className="grid grid-cols-3 gap-1 md:grid-cols-1 md:gap-4">
-                    <button 
-                        onClick={recordingState === RecordingState.RECORDING ? handleStopRecording : handleStartRecording}
-                        className={`flex flex-row md:flex-row items-center justify-center p-2 md:p-4 rounded-lg md:rounded-xl border transition-all active:scale-95 ${
-                        recordingState === RecordingState.RECORDING 
-                            ? 'border-red-500 bg-red-50 text-red-600 animate-pulse' 
-                            : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-600'
-                        }`}
-                    >
-                        {recordingState === RecordingState.RECORDING ? 
-                            <StopCircle className="w-4 h-4 md:w-5 md:h-5 md:mr-2" /> : 
-                            <Mic className="w-4 h-4 md:w-5 md:h-5 md:mr-2" />
-                        }
-                        <div className="flex flex-col items-start ml-1 md:ml-2">
-                            <span className="text-xs md:text-sm font-bold leading-none">
-                                {recordingState === RecordingState.RECORDING ? "停止" : "録音"}
-                            </span>
-                            <span className="text-[8px] md:text-[10px] opacity-70 leading-none mt-0.5">
-                                Target: {tracks.find(t=>t.id===activeTrackId)?.name}
-                            </span>
-                        </div>
-                    </button>
-
-                    <label className="flex flex-row md:flex-row items-center justify-center p-2 md:p-4 rounded-lg md:rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-600 cursor-pointer transition-all active:scale-95">
-                        <Upload className="w-4 h-4 md:w-5 md:h-5 md:mr-2" />
-                        <div className="flex flex-col items-start ml-1 md:ml-2">
-                            <span className="text-xs md:text-sm font-bold leading-none">UP</span>
-                            <span className="text-[8px] md:text-[10px] opacity-70 leading-none mt-0.5">
-                                Target: {tracks.find(t=>t.id===activeTrackId)?.name}
-                            </span>
-                        </div>
-                        <input type="file" accept="audio/*" onChange={handleFileUpload} className="hidden" />
-                    </label>
-
-                     <button 
-                        onClick={recordingState === RecordingState.PLAYING ? handlePause : handlePlay}
-                        disabled={tracks.every(t => t.audioBuffer === null)}
-                        className={`flex flex-row md:flex-row items-center justify-center p-2 md:p-4 rounded-lg md:rounded-xl border transition-all active:scale-95 ${
-                             recordingState === RecordingState.PLAYING
-                             ? 'bg-amber-100 border-amber-400 text-amber-700'
-                             : 'bg-indigo-600 border-indigo-600 text-white shadow-md'
-                        } disabled:opacity-50 disabled:bg-gray-200 disabled:border-gray-200 disabled:text-gray-400 disabled:shadow-none`}
-                     >
-                        {recordingState === RecordingState.PLAYING ? (
-                             <Pause className="w-4 h-4 md:w-5 md:h-5 md:mr-2" />
-                        ) : (
-                             <Play className="w-4 h-4 md:w-5 md:h-5 md:mr-2" />
-                        )}
-                        <span className="text-xs md:text-sm font-bold ml-1 md:ml-0">
-                            {recordingState === RecordingState.PLAYING ? "停止" : "再生"}
-                        </span>
-                     </button>
-                </div>
-            </div>
-        </div>
-    </div>
+      <MoreSheet
+        isOpen={isMoreOpen}
+        tracks={tracks}
+        recordTrackId={recordTrackId}
+        vadPreset={vadPreset}
+        vadStability={vadStability}
+        inputRms={inputRms}
+        playWhileRecording={playWhileRecording}
+        onClose={() => setIsMoreOpen(false)}
+        onExportAudio={() => void handleExportAudio()}
+        onExportSheetImagesCurrent={() => void handleExportSheetImagesCurrent()}
+        onExportSheetImagesAll={() => void handleExportSheetImagesAll()}
+        onFileUpload={handleFileUpload}
+        onChangeVadPreset={setVadPreset}
+        onChangeVadStability={setVadStability}
+        onTogglePlayWhileRecording={() => setPlayWhileRecording((prev) => !prev)}
+      />
+    </AppShell>
   );
 }

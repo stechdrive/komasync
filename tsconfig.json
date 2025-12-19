@@ -32,6 +32,8 @@
     "App.tsx",
     "types.ts",
     "components/**/*.tsx",
+    "domain/**/*.ts",
+    "hooks/**/*.ts",
     "services/**/*.ts"
   ],
   "exclude": [
