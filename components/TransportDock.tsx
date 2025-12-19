@@ -1,20 +1,15 @@
 import React from 'react';
-import { CheckSquare, Mic, Pause, Play, Plus, StopCircle } from 'lucide-react';
-import { RecordingState, Track } from '@/types';
-import { getTrackTheme } from '@/domain/trackTheme';
-import { EditTarget } from '@/domain/editTypes';
+import { Mic, Pause, Play, Plus, StopCircle } from 'lucide-react';
+import { RecordingState } from '@/types';
 
 type TransportDockProps = {
   recordingState: RecordingState;
   hasAudio: boolean;
-  tracks: Track[];
   recordTrackId: string;
-  editTarget: EditTarget;
   isMicReady: boolean;
   isMicPreparing: boolean;
-  isSelectionMode: boolean;
-  onSelectTarget: (target: EditTarget) => void;
-  onToggleSelectionMode: () => void;
+  isAllTracks: boolean;
+  onToggleAllTracks: () => void;
   onInsertOneFrame: () => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -25,14 +20,11 @@ type TransportDockProps = {
 export const TransportDock: React.FC<TransportDockProps> = ({
   recordingState,
   hasAudio,
-  tracks,
   recordTrackId,
-  editTarget,
   isMicReady,
   isMicPreparing,
-  isSelectionMode,
-  onSelectTarget,
-  onToggleSelectionMode,
+  isAllTracks,
+  onToggleAllTracks,
   onInsertOneFrame,
   onStartRecording,
   onStopRecording,
@@ -95,13 +87,13 @@ export const TransportDock: React.FC<TransportDockProps> = ({
 
         <button
           type="button"
-          onClick={onToggleSelectionMode}
-          className={`w-12 h-12 rounded-xl border flex items-center justify-center transition-colors ${
-            isSelectionMode ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
+          onClick={onToggleAllTracks}
+          className={`w-12 h-12 rounded-xl border flex items-center justify-center transition-colors font-bold ${
+            isAllTracks ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
           }`}
-          title="選択"
+          title="全トラック"
         >
-          <CheckSquare className="w-5 h-5" />
+          全
         </button>
 
         <button
@@ -119,37 +111,6 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         </button>
       </div>
 
-      <div className="px-3 pb-2">
-        <div className="flex bg-gray-100 p-1 rounded-lg gap-1">
-          <button
-            type="button"
-            onClick={() => onSelectTarget('all')}
-            className={`flex-1 py-2 rounded-md text-xs font-bold transition-all border-b-2 ${
-              editTarget === 'all'
-                ? 'bg-white shadow-sm text-gray-800 border-gray-500'
-                : 'text-gray-400 border-transparent hover:bg-gray-200 hover:text-gray-600'
-            }`}
-          >
-            全
-          </button>
-          {tracks.map((track) => {
-            const isActive = editTarget === track.id;
-            const theme = getTrackTheme(track.id);
-            return (
-              <button
-                key={track.id}
-                type="button"
-                onClick={() => onSelectTarget(track.id)}
-                className={`flex-1 py-2 rounded-md text-xs font-bold transition-all border-b-2 ${
-                  isActive ? `bg-white shadow-sm ${theme.activeTextClass} ${theme.activeBorderClass}` : 'text-gray-400 border-transparent hover:bg-gray-200 hover:text-gray-600'
-                }`}
-              >
-                T{track.id}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 };

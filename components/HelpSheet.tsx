@@ -55,7 +55,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>再生ボタンで現在位置から再生します。</li>
                 <li>録音ボタンで録音開始、停止で終了します。</li>
                 <li>準備中…表示の後に録音が開始します。</li>
-                <li>録音トラックは下部のタブ（T1/T2/T3）で選択します。</li>
+                <li>録音トラックはタイムシート上のセルをタップして選択します。</li>
                 <li>「その他」から録音中の再生ON/OFFを切り替えられます。</li>
               </ul>
             </section>
@@ -63,7 +63,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             <section className="space-y-2">
               <div className="text-xs text-gray-500">編集</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>選択モードをONにし、開始・終了のコマをタップして範囲選択します。</li>
+                <li>PCはドラッグ、スマホは長押ししてドラッグで範囲選択します。</li>
                 <li>選択範囲は「切り取り」「削除」が可能です。</li>
                 <li>タイムシート上で右クリック/長押しすると貼り付けメニューを開けます。</li>
                 <li>クリップボードがあれば「挿入」「上書き」で貼り付けます。</li>
@@ -93,6 +93,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <div className="text-xs text-gray-500">操作のコツ</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>ルーラーやトラックをタップすると再生ヘッドを移動できます。</li>
+                <li>全トラック操作は下部の「全」ボタンで切り替えます。</li>
                 <li>横スクロールでシートを移動できます。</li>
               </ul>
             </section>

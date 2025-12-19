@@ -79,8 +79,6 @@ export default function App() {
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
-  const [selectionDraftStartFrame, setSelectionDraftStartFrame] = useState<number | null>(null);
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -90,6 +88,7 @@ export default function App() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micPreparePromiseRef = useRef<Promise<MediaStream> | null>(null);
   const pendingRecordStartRef = useRef(false);
+  const lastSingleTrackIdRef = useRef<string>('1');
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -158,7 +157,6 @@ export default function App() {
     
     // Reset selection to avoid ghost selections
     setSelection(null);
-    setSelectionDraftStartFrame(null);
   }, [historyPast, tracks, vadPreset, vadStability]);
 
   const handleRedo = useCallback(() => {
@@ -178,7 +176,6 @@ export default function App() {
     setHistoryFuture(newFuture);
 
     setSelection(null);
-    setSelectionDraftStartFrame(null);
   }, [historyFuture, tracks, vadPreset, vadStability]);
 
   const handleResetProject = () => {
@@ -195,10 +192,9 @@ export default function App() {
         setHistoryFuture([]);
         setRecordTrackId('1');
         setEditTarget('1');
+        lastSingleTrackIdRef.current = '1';
         setCurrentFrame(0);
         setSelection(null);
-        setSelectionDraftStartFrame(null);
-        setIsSelectionMode(false);
         setClipboardClip(null);
         setRecordingState(RecordingState.IDLE);
         recordingStartFrameRef.current = 0;
@@ -236,7 +232,6 @@ export default function App() {
   
   const handleBackgroundClick = () => {
     setSelection(null);
-    setSelectionDraftStartFrame(null);
   };
 
   const handleOpenClipboardMenu = useCallback((point: { x: number; y: number }) => {
@@ -524,7 +519,6 @@ export default function App() {
       // Do not reset current frame to 0, let user stay where they are or seek manually
       // setCurrentFrame(0); 
       setSelection(null);
-      setSelectionDraftStartFrame(null);
     } catch (e: any) {
       console.error("Error loading audio blob:", e);
       // More user friendly error
@@ -601,7 +595,6 @@ export default function App() {
       setTracks(nextTracks);
       setClipboardClip(nextClipboard);
       setSelection(null);
-      setSelectionDraftStartFrame(null);
     } catch (error) {
       console.error('Cut failed:', error);
       alert('切り取り操作に失敗しました。');
@@ -628,7 +621,6 @@ export default function App() {
 
       setTracks(nextTracks);
       setSelection(null);
-      setSelectionDraftStartFrame(null);
       setCurrentFrame(range.startFrame);
     } catch (error) {
       console.error('Delete failed:', error);
@@ -679,7 +671,6 @@ export default function App() {
       }
 
       setSelection(null);
-      setSelectionDraftStartFrame(null);
     } catch (error) {
       console.error('Paste insert failed:', error);
       alert('貼り付け（挿入）に失敗しました。');
@@ -729,7 +720,6 @@ export default function App() {
       }
 
       setSelection(null);
-      setSelectionDraftStartFrame(null);
     } catch (error) {
       console.error('Paste overwrite failed:', error);
       alert('貼り付け（上書き）に失敗しました。');
@@ -844,35 +834,27 @@ export default function App() {
     }
 
     setCurrentFrame(nextFrame);
-
-    if (!isSelectionMode) {
-      setSelectionDraftStartFrame(null);
-      return;
-    }
-
-    if (selectionDraftStartFrame === null) {
-      setSelectionDraftStartFrame(nextFrame);
-      setSelection({ startFrame: nextFrame, endFrame: nextFrame });
-      return;
-    }
-
-    setSelection({ startFrame: selectionDraftStartFrame, endFrame: nextFrame });
-    setSelectionDraftStartFrame(null);
   };
 
-  const handleSelectTarget = (target: EditTarget) => {
-    setEditTarget(target);
-    if (target !== 'all') setRecordTrackId(target);
+  const handleTrackSelect = (trackId: string) => {
+    setEditTarget(trackId);
+    setRecordTrackId(trackId);
+    lastSingleTrackIdRef.current = trackId;
   };
 
-  const handleToggleSelectionMode = () => {
-    setIsSelectionMode((prev) => {
-      const next = !prev;
-      if (prev) {
-        setSelectionDraftStartFrame(null);
-      }
-      return next;
-    });
+  const handleToggleAllTracks = () => {
+    if (editTarget === 'all') {
+      const next = lastSingleTrackIdRef.current || recordTrackId;
+      setEditTarget(next);
+      setRecordTrackId(next);
+    } else {
+      lastSingleTrackIdRef.current = editTarget;
+      setEditTarget('all');
+    }
+  };
+
+  const handleSelectionChange = (range: SelectionRange | null) => {
+    setSelection(range);
   };
 
   // --- Keyboard Shortcuts ---
@@ -950,14 +932,11 @@ export default function App() {
         <TransportDock
           recordingState={recordingState}
           hasAudio={hasAudio}
-          tracks={tracks}
           recordTrackId={recordTrackId}
-          editTarget={editTarget}
           isMicReady={isMicReady}
           isMicPreparing={isMicPreparing}
-          isSelectionMode={isSelectionMode}
-          onSelectTarget={handleSelectTarget}
-          onToggleSelectionMode={handleToggleSelectionMode}
+          isAllTracks={editTarget === 'all'}
+          onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
@@ -978,6 +957,8 @@ export default function App() {
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
         onOpenContextMenu={handleOpenClipboardMenu}
+        onSelectionChange={handleSelectionChange}
+        onTrackSelect={handleTrackSelect}
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
@@ -988,7 +969,6 @@ export default function App() {
         onDelete={() => void handleDeleteSelection()}
         onClearSelection={() => {
           setSelection(null);
-          setSelectionDraftStartFrame(null);
         }}
       />
 
