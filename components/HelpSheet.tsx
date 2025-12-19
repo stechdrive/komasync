@@ -96,6 +96,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <ul className="list-disc ml-4 space-y-1">
                 <li>ルーラーやトラックをタップすると再生ヘッドを移動できます。</li>
                 <li>ルーラーをドラッグするとスクラブ再生できます。</li>
+                <li>上部のスピーカーアイコンからトラックをミュートできます。</li>
                 <li>全トラック操作は下部の「全」ボタンで切り替えます。</li>
                 <li>横スクロールでシートを移動できます。</li>
               </ul>

@@ -14,6 +14,7 @@ import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
 import { ClipboardMenu } from './components/ClipboardMenu';
+import { TrackMuteMenu } from './components/TrackMuteMenu';
 import { AppShell } from './components/AppShell';
 import { EditPalette } from './components/EditPalette';
 import { MoreSheet } from './components/MoreSheet';
@@ -68,6 +69,7 @@ export default function App() {
   // Clipboard State
   const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
   const [clipboardMenu, setClipboardMenu] = useState<{ x: number; y: number } | null>(null);
+  const [muteMenu, setMuteMenu] = useState<{ x: number; y: number } | null>(null);
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
@@ -257,9 +259,23 @@ export default function App() {
     setClipboardMenu(null);
   }, []);
 
+  const handleOpenMuteMenu = useCallback((point: { x: number; y: number }) => {
+    setMuteMenu(point);
+  }, []);
+
+  const handleCloseMuteMenu = useCallback(() => {
+    setMuteMenu(null);
+  }, []);
+
 
   const updateTrack = (trackId: string, updates: Partial<Track>) => {
     setTracks(prev => prev.map(t => t.id === trackId ? { ...t, ...updates } : t));
+  };
+
+  const toggleTrackMute = (trackId: string) => {
+    setTracks((prev) =>
+      prev.map((track) => (track.id === trackId ? { ...track, isMuted: !track.isMuted } : track))
+    );
   };
 
   const stopPlaybackLoop = () => {
@@ -1049,6 +1065,7 @@ export default function App() {
 
   const totalTimecode = formatTimecode(maxFrames, FPS);
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
+  const mutedCount = tracks.filter((track) => track.isMuted).length;
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
   const targetLabel =
@@ -1068,16 +1085,20 @@ export default function App() {
           isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
           isUndoDisabled={historyPast.length === 0}
           isRedoDisabled={historyFuture.length === 0}
+          mutedCount={mutedCount}
           onReset={handleResetProject}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          onOpenMuteMenu={handleOpenMuteMenu}
           onOpenHelp={() => {
             setIsHelpOpen(true);
             setIsMoreOpen(false);
+            setMuteMenu(null);
           }}
           onOpenMore={() => {
             setIsMoreOpen(true);
             setIsHelpOpen(false);
+            setMuteMenu(null);
           }}
         />
       }
@@ -1151,6 +1172,14 @@ export default function App() {
       />
 
       <HelpSheet isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <TrackMuteMenu
+        isOpen={muteMenu !== null}
+        position={muteMenu}
+        tracks={tracks}
+        onToggleTrack={toggleTrackMute}
+        onClose={handleCloseMuteMenu}
+      />
 
       <ClipboardMenu
         isOpen={clipboardMenu !== null}
