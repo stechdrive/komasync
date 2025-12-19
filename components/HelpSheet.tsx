@@ -14,7 +14,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute inset-x-0 bottom-0 safe-area-bottom">
-        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[80vh] overflow-hidden">
+        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[80vh] overflow-hidden flex flex-col">
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
             <div className="font-bold text-gray-800 flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-indigo-600" />
@@ -30,7 +30,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
 
-          <div className="p-4 overflow-y-auto space-y-5 text-sm text-gray-700">
+          <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-5 text-sm text-gray-700">
             <section className="space-y-2">
               <div className="text-xs text-gray-500">概要</div>
               <p>
