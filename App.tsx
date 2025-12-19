@@ -233,6 +233,11 @@ export default function App() {
     setTracks(prev => prev.map(t => t.id === trackId ? { ...t, ...updates } : t));
   };
 
+  const stopPlaybackLoop = () => {
+    stopAllSources();
+    cancelAnimationFrame(animationFrameRef.current);
+  };
+
   // Helper to start playback (used by both Play button and Recording start)
   const startPlayback = (startFrame: number, mode: RecordingState) => {
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -282,10 +287,11 @@ export default function App() {
       // If we are just PLAYING, stop when audio ends.
       // If we are RECORDING, do NOT stop when audio ends (continue until user stops).
       if (mode === RecordingState.PLAYING && currentTime >= expectedEndTime) {
-         handlePause();
-         setCurrentFrame(0);
-         setRecordingState(RecordingState.IDLE);
-         return;
+        stopPlaybackLoop();
+        const endFrame = Math.max(0, Math.min(maxFrames - 1, Math.floor(maxDuration * FPS) - 1));
+        setCurrentFrame(endFrame);
+        setRecordingState(RecordingState.IDLE);
+        return;
       }
 
       // Update frame if state matches or if we are recording (even if audio finished)
@@ -754,8 +760,7 @@ export default function App() {
   };
 
   const handlePause = () => {
-    stopAllSources();
-    cancelAnimationFrame(animationFrameRef.current);
+    stopPlaybackLoop();
     setRecordingState(RecordingState.PAUSED);
   };
 
