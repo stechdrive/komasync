@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Track } from '@/types';
-import { getFramesPerColumn } from '@/domain/timesheet';
+import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
 import { EditTarget, SelectionRange } from '@/domain/editTypes';
 
@@ -10,6 +10,7 @@ type TimesheetViewportProps = {
   editTarget: EditTarget;
   selection: SelectionRange | null;
   fps: number;
+  isPlaying: boolean;
   onFrameTap: (frame: number) => void;
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
@@ -23,17 +24,20 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   editTarget,
   selection,
   fps,
+  isPlaying,
   onFrameTap,
   onBackgroundClick,
   onFirstVisibleColumnChange,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFirstVisibleColRef = useRef<number | null>(null);
+  const lastAutoSheetRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
 
   const framesPerColumn = getFramesPerColumn(fps);
+  const framesPerSheet = getFramesPerSheet(fps);
   const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
   const totalColumns = Math.max(2, Math.ceil(maxFrames / framesPerColumn));
 
@@ -76,6 +80,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (viewportHeight <= 0) return 0;
     return viewportHeight / framesPerColumn;
   }, [framesPerColumn, viewportHeight]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      lastAutoSheetRef.current = null;
+      return;
+    }
+    const el = scrollRef.current;
+    if (!el || columnWidth <= 0) return;
+
+    const sheetIndex = Math.floor(currentFrame / framesPerSheet);
+    if (lastAutoSheetRef.current === sheetIndex) return;
+    lastAutoSheetRef.current = sheetIndex;
+
+    // 再生中にシート境界へ到達したら自動スクロール
+    const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
+    el.scrollTo({ left: targetLeft, behavior: 'smooth' });
+  }, [columnWidth, currentFrame, framesPerSheet, isPlaying]);
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
