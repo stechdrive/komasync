@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Undo2 } from 'lucide-react';
+import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Undo2, Volume2, VolumeX } from 'lucide-react';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 
 type TopBarProps = {
@@ -9,9 +9,11 @@ type TopBarProps = {
   isResetDisabled: boolean;
   isUndoDisabled: boolean;
   isRedoDisabled: boolean;
+  mutedCount: number;
   onReset: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onOpenMuteMenu: (point: { x: number; y: number }) => void;
   onOpenHelp: () => void;
   onOpenMore: () => void;
 };
@@ -25,14 +27,17 @@ export const TopBar: React.FC<TopBarProps> = ({
   isResetDisabled,
   isUndoDisabled,
   isRedoDisabled,
+  mutedCount,
   onReset,
   onUndo,
   onRedo,
+  onOpenMuteMenu,
   onOpenHelp,
   onOpenMore,
 }) => {
   const timerRef = useRef<number | null>(null);
   const [isHoldingReset, setIsHoldingReset] = useState(false);
+  const hasMuted = mutedCount > 0;
 
   const clearTimer = () => {
     if (timerRef.current !== null) {
@@ -114,6 +119,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             title="Redo"
           >
             <Redo2 className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              onOpenMuteMenu({ x: rect.right - 8, y: rect.bottom + 6 });
+            }}
+            className={`w-10 h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
+              hasMuted ? 'text-amber-100' : ''
+            }`}
+            title="ミュート"
+          >
+            {hasMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
           </button>
           <button
             type="button"
