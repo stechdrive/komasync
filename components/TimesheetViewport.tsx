@@ -30,6 +30,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFirstVisibleColRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
 
   const framesPerColumn = getFramesPerColumn(fps);
@@ -41,8 +42,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (!el) return;
 
     const ro = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0;
-      setViewportWidth(width);
+      const rect = entries[0]?.contentRect;
+      setViewportWidth(rect?.width ?? 0);
+      setViewportHeight(rect?.height ?? 0);
     });
     ro.observe(el);
 
@@ -69,6 +71,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const rulerWidth = useMemo(() => {
     return clamp(Math.round(columnWidth * 0.25), 36, 56);
   }, [columnWidth]);
+
+  const rowHeight = useMemo(() => {
+    if (viewportHeight <= 0) return 0;
+    return viewportHeight / framesPerColumn;
+  }, [framesPerColumn, viewportHeight]);
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
@@ -126,6 +133,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               maxFrames={maxFrames}
               columnWidth={columnWidth}
               rulerWidth={rulerWidth}
+              rowHeight={rowHeight}
               onFrameTap={onFrameTap}
             />
           ))}

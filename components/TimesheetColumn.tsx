@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Track } from '@/types';
 import { getFramesPerColumn, COLUMNS_PER_SHEET } from '@/domain/timesheet';
+import { formatTimecodeOneBased } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
 import { EditTarget, SelectionRange } from '@/domain/editTypes';
 
@@ -15,6 +16,7 @@ type TimesheetColumnProps = {
   maxFrames: number;
   columnWidth: number;
   rulerWidth: number;
+  rowHeight: number;
   onFrameTap: (frame: number) => void;
 };
 
@@ -23,10 +25,12 @@ const getRowBorderClass = (rowIndex: number, fps: number, isRuler: boolean): str
   const isSecond = frameInSecond % fps === 0;
   const half = Math.floor(fps / 2);
   const isHalfSecond = half > 0 ? frameInSecond % half === 0 : false;
+  const isSixFrame = frameInSecond % 6 === 0;
 
   if (isSecond) return isRuler ? 'border-b-2 border-gray-400 text-black font-bold' : 'border-b-2 border-gray-800';
-  if (isHalfSecond) return isRuler ? 'border-b border-gray-300' : 'border-b border-gray-400';
-  return 'border-b border-gray-200';
+  if (isHalfSecond) return isRuler ? 'border-b border-gray-300' : 'border-b border-gray-500';
+  if (isSixFrame) return isRuler ? 'border-b border-gray-200' : 'border-b border-gray-300';
+  return isRuler ? 'border-b border-gray-100' : 'border-b border-gray-200';
 };
 
 export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
@@ -40,12 +44,15 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   maxFrames,
   columnWidth,
   rulerWidth,
+  rowHeight,
   onFrameTap,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
-  const sheetIndex = Math.floor(columnIndex / COLUMNS_PER_SHEET);
   const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
   const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
+  const showAllFrameLabels = rowHeight >= 10;
+  const rulerFontSize = showAllFrameLabels ? '9px' : '10px';
+  const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
 
   const columnBoundaryClass = useMemo(() => {
     if (columnIndex === 0) return 'border-l-0';
@@ -58,24 +65,19 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
       className={`relative shrink-0 h-full snap-start ${columnBoundaryClass}`}
       style={{ width: `${columnWidth}px` }}
     >
-      {columnIndex % COLUMNS_PER_SHEET === 0 && (
-        <div className="absolute top-1 left-1 z-20 pointer-events-none">
-          <div className="bg-white/80 backdrop-blur rounded px-1.5 py-0.5 text-[10px] font-bold text-gray-700 border border-gray-200">
-            シート {sheetIndex + 1}
-          </div>
-        </div>
-      )}
-
       <div
         className="h-full grid"
         style={{
           gridTemplateRows: `repeat(${framesPerColumn}, minmax(0, 1fr))`,
-          gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr))`,
+          gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rulerWidth}px`,
         }}
       >
         {Array.from({ length: framesPerColumn }).map((_, rowIndex) => {
           const globalFrameIndex = startFrame + rowIndex;
           const frameNumInColumn = rowIndex + 1;
+          const showFrameLabel = showAllFrameLabels || frameNumInColumn === 1 || frameNumInColumn % 6 === 0;
+          const localFrameNumber = columnOffset + frameNumInColumn;
+          const globalFrameNumber = globalFrameIndex + 1;
 
           const isPastEnd = globalFrameIndex >= maxFrames;
           const isEndBoundary = globalFrameIndex === maxFrames;
@@ -87,16 +89,17 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
               : false;
 
           const rulerBorder = getRowBorderClass(rowIndex, fps, true);
+          const rulerTone = isCurrent ? 'bg-yellow-200 text-gray-900 font-bold' : 'bg-gray-50 text-gray-600';
 
           return (
             <React.Fragment key={rowIndex}>
               {/* ルーラー */}
               <div
-                className={`flex items-center justify-center text-[10px] text-gray-500 bg-gray-50 select-none overflow-hidden ${rulerBorder} border-r border-gray-300`}
-                style={{ fontSize: frameNumInColumn % fps === 0 ? '10px' : '9px' }}
+                className={`flex items-center justify-center font-mono select-none overflow-hidden ${rulerBorder} ${rulerTone} border-r border-gray-300`}
+                style={{ fontSize: rulerFontSize }}
                 onClick={() => onFrameTap(globalFrameIndex)}
               >
-                {frameNumInColumn % fps === 0 ? frameNumInColumn : ''}
+                {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
 
               {/* トラック */}
@@ -139,6 +142,19 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                   </div>
                 );
               })}
+
+              {/* 右ルーラー */}
+              <div
+                className={`flex items-center justify-center font-mono select-none overflow-hidden ${rulerBorder} ${rulerTone} border-l border-gray-300`}
+                style={{ fontSize: rulerFontSize }}
+                onClick={() => onFrameTap(globalFrameIndex)}
+              >
+                {isCurrent
+                  ? formatTimecodeOneBased(globalFrameIndex, fps)
+                  : showFrameLabel
+                    ? globalFrameNumber
+                    : ''}
+              </div>
             </React.Fragment>
           );
         })}
