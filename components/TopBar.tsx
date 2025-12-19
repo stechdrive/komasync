@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Undo2 } from 'lucide-react';
+import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 
 type TopBarProps = {
   sheetNumber: number;
@@ -84,6 +85,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
 
           <div className="min-w-0 leading-tight">
+            <div className="text-[11px] font-bold truncate">
+              {APP_NAME} v{APP_VERSION}
+            </div>
             <div className="text-[10px] opacity-80 truncate">シート {sheetNumber}</div>
             <div className="font-mono text-xs truncate">
               総 {totalTimecode}
