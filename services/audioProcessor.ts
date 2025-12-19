@@ -1,4 +1,5 @@
 import { FrameData } from '../types';
+import { frameToSampleIndex } from './audioEdit';
 
 export const processAudioBuffer = (
   audioBuffer: AudioBuffer,
@@ -7,24 +8,24 @@ export const processAudioBuffer = (
 ): FrameData[] => {
   const channelData = audioBuffer.getChannelData(0); // Use mono or left channel
   const sampleRate = audioBuffer.sampleRate;
-  const samplesPerFrame = Math.floor(sampleRate / fps);
-  const totalFrames = Math.floor(channelData.length / samplesPerFrame);
+  const totalFrames = Math.floor((channelData.length * fps) / sampleRate);
   
   const frames: FrameData[] = [];
 
   for (let i = 0; i < totalFrames; i++) {
-    const startSample = i * samplesPerFrame;
-    const endSample = startSample + samplesPerFrame;
+    const startSample = frameToSampleIndex(i, sampleRate, fps);
+    const endSampleExclusive = frameToSampleIndex(i + 1, sampleRate, fps);
+    const endSample = Math.min(endSampleExclusive, channelData.length);
+    if (startSample >= endSample) break;
     
     // Calculate RMS (Root Mean Square) for this frame
     let sumSquares = 0;
     for (let j = startSample; j < endSample; j++) {
-      if (j < channelData.length) {
-        sumSquares += channelData[j] * channelData[j];
-      }
+      sumSquares += channelData[j] * channelData[j];
     }
     
-    const rms = Math.sqrt(sumSquares / samplesPerFrame);
+    const frameSampleCount = endSample - startSample;
+    const rms = frameSampleCount > 0 ? Math.sqrt(sumSquares / frameSampleCount) : 0;
     
     // Simple noise gate / VAD
     // Normalize volume slightly for better visualization, but keep RMS relative logic
