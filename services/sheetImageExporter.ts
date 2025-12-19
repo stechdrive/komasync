@@ -151,6 +151,7 @@ const drawSheetToCanvas = (
   // グリッド（横線＋塗り）
   for (let row = 0; row < framesPerColumn; row++) {
     const y = gridTop + row * config.rowHeight;
+    const lineY = y + config.rowHeight;
     const frameInSecond = row + 1;
     const isSecond = frameInSecond % fps === 0;
     const half = Math.floor(fps / 2);
@@ -162,8 +163,8 @@ const drawSheetToCanvas = (
     ctx.strokeStyle = isSecond ? '#111827' : isHalfSecond ? '#9ca3af' : isSixFrame ? '#d1d5db' : '#e5e7eb';
     ctx.lineWidth = isSecond ? 1.5 : 1;
     ctx.beginPath();
-    ctx.moveTo(gridLeft, y);
-    ctx.lineTo(gridLeft + columnWidth * COLUMNS_PER_SHEET, y);
+    ctx.moveTo(gridLeft, lineY);
+    ctx.lineTo(gridLeft + columnWidth * COLUMNS_PER_SHEET, lineY);
     ctx.stroke();
 
     // ルーラー数値（各列）
@@ -217,14 +218,6 @@ const drawSheetToCanvas = (
   }
 
   ctx.textAlign = 'left';
-
-  // 下端線
-  ctx.strokeStyle = '#111827';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(gridLeft, gridTop + framesPerColumn * config.rowHeight);
-  ctx.lineTo(gridLeft + columnWidth * COLUMNS_PER_SHEET, gridTop + framesPerColumn * config.rowHeight);
-  ctx.stroke();
 
   // フッター
   ctx.fillStyle = '#6b7280';
