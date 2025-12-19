@@ -13,6 +13,7 @@ import { analyzeAudioBufferWithVad, getVadTuning, VadPreset } from './services/v
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
+import { ClipboardMenu } from './components/ClipboardMenu';
 import { AppShell } from './components/AppShell';
 import { EditPalette } from './components/EditPalette';
 import { MoreSheet } from './components/MoreSheet';
@@ -63,7 +64,7 @@ export default function App() {
 
   // Clipboard State
   const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
-  const [isClipboardPanelOpen, setIsClipboardPanelOpen] = useState(true);
+  const [clipboardMenu, setClipboardMenu] = useState<{ x: number; y: number } | null>(null);
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
@@ -199,7 +200,6 @@ export default function App() {
         setSelectionDraftStartFrame(null);
         setIsSelectionMode(false);
         setClipboardClip(null);
-        setIsClipboardPanelOpen(true);
         setRecordingState(RecordingState.IDLE);
         recordingStartFrameRef.current = 0;
         recordingStartTimeRef.current = 0;
@@ -238,6 +238,14 @@ export default function App() {
     setSelection(null);
     setSelectionDraftStartFrame(null);
   };
+
+  const handleOpenClipboardMenu = useCallback((point: { x: number; y: number }) => {
+    setClipboardMenu(point);
+  }, []);
+
+  const handleCloseClipboardMenu = useCallback(() => {
+    setClipboardMenu(null);
+  }, []);
 
 
   const updateTrack = (trackId: string, updates: Partial<Track>) => {
@@ -592,7 +600,6 @@ export default function App() {
 
       setTracks(nextTracks);
       setClipboardClip(nextClipboard);
-      setIsClipboardPanelOpen(true);
       setSelection(null);
       setSelectionDraftStartFrame(null);
     } catch (error) {
@@ -970,24 +977,19 @@ export default function App() {
         }
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
+        onOpenContextMenu={handleOpenClipboardMenu}
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
       <EditPalette
         selectionCount={selectionCount}
         targetLabel={targetLabel}
-        canPaste={clipboardClip !== null}
-        isClipboardPanelOpen={isClipboardPanelOpen}
         onCut={() => void handleCut()}
         onDelete={() => void handleDeleteSelection()}
         onClearSelection={() => {
           setSelection(null);
           setSelectionDraftStartFrame(null);
         }}
-        onHideClipboard={() => setIsClipboardPanelOpen(false)}
-        onShowClipboard={() => setIsClipboardPanelOpen(true)}
-        onPasteInsert={() => void handlePasteInsert()}
-        onPasteOverwrite={() => void handlePasteOverwrite()}
       />
 
       <MoreSheet
@@ -1009,6 +1011,16 @@ export default function App() {
       />
 
       <HelpSheet isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <ClipboardMenu
+        isOpen={clipboardMenu !== null}
+        position={clipboardMenu}
+        canPaste={clipboardClip !== null}
+        onPasteInsert={() => void handlePasteInsert()}
+        onPasteOverwrite={() => void handlePasteOverwrite()}
+        onClearClipboard={() => setClipboardClip(null)}
+        onClose={handleCloseClipboardMenu}
+      />
     </AppShell>
   );
 }

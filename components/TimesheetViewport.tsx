@@ -14,6 +14,7 @@ type TimesheetViewportProps = {
   onFrameTap: (frame: number) => void;
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
+  onOpenContextMenu?: (point: { x: number; y: number }) => void;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -28,10 +29,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onFrameTap,
   onBackgroundClick,
   onFirstVisibleColumnChange,
+  onOpenContextMenu,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFirstVisibleColRef = useRef<number | null>(null);
   const lastAutoSheetRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressPointRef = useRef<{ x: number; y: number } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -132,12 +136,61 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (e.target === e.currentTarget) onBackgroundClick?.();
   };
 
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearLongPressTimer();
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!onOpenContextMenu) return;
+    e.preventDefault();
+    onOpenContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!onOpenContextMenu) return;
+    if (e.pointerType !== 'touch') return;
+    longPressPointRef.current = { x: e.clientX, y: e.clientY };
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      onOpenContextMenu({ x: e.clientX, y: e.clientY });
+      longPressTimerRef.current = null;
+    }, 520);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!longPressTimerRef.current || !longPressPointRef.current) return;
+    const dx = e.clientX - longPressPointRef.current.x;
+    const dy = e.clientY - longPressPointRef.current.y;
+    if (Math.hypot(dx, dy) > 8) {
+      clearLongPressTimer();
+      longPressPointRef.current = null;
+    }
+  };
+
+  const handlePointerUp = () => {
+    clearLongPressTimer();
+    longPressPointRef.current = null;
+  };
+
   return (
     <div className="h-full w-full bg-gray-100 select-none">
       <div
         ref={scrollRef}
         className="h-full w-full overflow-x-auto overflow-y-hidden snap-x snap-proximity overscroll-x-contain cursor-default"
         onClick={handleBackdropClick}
+        onContextMenu={handleContextMenu}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onPointerLeave={handlePointerUp}
       >
         <div className="h-full flex" style={{ width: `${totalColumns * columnWidth}px` }}>
           {leftSpacerWidth > 0 && <div className="shrink-0 h-full" style={{ width: `${leftSpacerWidth}px` }} />}
