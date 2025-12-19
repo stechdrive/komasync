@@ -60,7 +60,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canRecordToggle}
           onClick={isRecording ? onStopRecording : onStartRecording}
-          className={`flex-1 h-12 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
+          className={`flex-1 h-14 sm:h-12 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
             isRecording
               ? 'border-red-500 bg-red-50 text-red-600'
               : isPreparing
@@ -73,7 +73,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
             <div className="text-sm">
               {isRecording ? '停止' : isPreparing ? '準備中…' : isBusy ? '処理中…' : '録音'}
             </div>
-            <div className="text-[10px] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
+            <div className="text-xs sm:text-[10px] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
               <span className={`inline-block w-2 h-2 rounded-full ${micDotClass}`} />
               REC T{recordTrackId}
             </div>
@@ -84,7 +84,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canPlayToggle}
           onClick={isPlaying ? onPause : onPlay}
-          className={`w-12 h-12 rounded-xl border flex items-center justify-center transition-colors ${
+          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors ${
             canPlayToggle ? 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700' : 'opacity-50 border-gray-200'
           }`}
           title={isPlaying ? '一時停止' : '再生'}
@@ -92,7 +92,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </button>
 
-        <div className="h-12 w-[92px] rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
+        <div className="h-14 sm:h-12 w-[110px] sm:w-[92px] rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
           <div className="flex items-center justify-between text-[9px] text-gray-500 leading-none">
             <span>閾値</span>
             <span className="font-mono text-[9px]">{vadThresholdValue.toFixed(3)}</span>
@@ -112,7 +112,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         <button
           type="button"
           onClick={onToggleAllTracks}
-          className={`w-12 h-12 rounded-xl border flex items-center justify-center transition-colors font-bold ${
+          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors font-bold ${
             isAllTracks ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
           }`}
           title="全トラック"
@@ -124,7 +124,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={isBusy || isRecording || isPlaying}
           onClick={onInsertOneFrame}
-          className={`w-12 h-12 rounded-xl border flex items-center justify-center transition-colors ${
+          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors ${
             isBusy || isRecording || isPlaying
               ? 'opacity-50 border-gray-200'
               : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
