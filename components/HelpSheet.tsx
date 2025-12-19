@@ -54,6 +54,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <ul className="list-disc ml-4 space-y-1">
                 <li>再生ボタンで現在位置から再生します。</li>
                 <li>録音ボタンで録音開始、停止で終了します。</li>
+                <li>準備中…表示の後に録音が開始します。</li>
                 <li>録音トラックは下部のタブ（T1/T2/T3）で選択します。</li>
                 <li>「その他」から録音中の再生ON/OFFを切り替えられます。</li>
               </ul>

@@ -10,6 +10,8 @@ type TransportDockProps = {
   tracks: Track[];
   recordTrackId: string;
   editTarget: EditTarget;
+  isMicReady: boolean;
+  isMicPreparing: boolean;
   isSelectionMode: boolean;
   onSelectTarget: (target: EditTarget) => void;
   onToggleSelectionMode: () => void;
@@ -26,6 +28,8 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   tracks,
   recordTrackId,
   editTarget,
+  isMicReady,
+  isMicPreparing,
   isSelectionMode,
   onSelectTarget,
   onToggleSelectionMode,
@@ -38,9 +42,17 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   const isRecording = recordingState === RecordingState.RECORDING;
   const isPlaying = recordingState === RecordingState.PLAYING;
   const isBusy = recordingState === RecordingState.PROCESSING;
+  const isPreparing = isMicPreparing && !isRecording;
 
-  const canRecordToggle = !isBusy;
+  const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
+  const micDotClass = isRecording
+    ? 'bg-red-500'
+    : isPreparing
+      ? 'bg-amber-400'
+      : isMicReady
+        ? 'bg-green-500'
+        : 'bg-gray-300';
 
   return (
     <div className="safe-area-bottom bg-white border-t border-gray-200">
@@ -50,13 +62,22 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           disabled={!canRecordToggle}
           onClick={isRecording ? onStopRecording : onStartRecording}
           className={`flex-1 h-12 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
-            isRecording ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-200 bg-white text-gray-700'
+            isRecording
+              ? 'border-red-500 bg-red-50 text-red-600'
+              : isPreparing
+                ? 'border-amber-400 bg-amber-50 text-amber-700'
+                : 'border-gray-200 bg-white text-gray-700'
           } ${!canRecordToggle ? 'opacity-50' : 'hover:border-indigo-400 hover:bg-indigo-50'}`}
         >
           {isRecording ? <StopCircle className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           <div className="flex flex-col items-start leading-none">
-            <div className="text-sm">{isRecording ? '停止' : isBusy ? '処理中…' : '録音'}</div>
-            <div className="text-[10px] text-gray-500 font-mono mt-0.5">REC T{recordTrackId}</div>
+            <div className="text-sm">
+              {isRecording ? '停止' : isPreparing ? '準備中…' : isBusy ? '処理中…' : '録音'}
+            </div>
+            <div className="text-[10px] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
+              <span className={`inline-block w-2 h-2 rounded-full ${micDotClass}`} />
+              REC T{recordTrackId}
+            </div>
           </div>
         </button>
 
