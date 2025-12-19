@@ -39,7 +39,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
   const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
-  const totalColumns = Math.max(2, Math.ceil(maxFrames / framesPerColumn));
+  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1);
+  const totalColumns = Math.max(2, Math.ceil(virtualMaxFrames / framesPerColumn));
 
   useEffect(() => {
     const el = scrollRef.current;
