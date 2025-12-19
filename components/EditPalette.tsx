@@ -8,6 +8,7 @@ type EditPaletteProps = {
   onCut: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
+  onClearClipboard: () => void;
   onPasteInsert: () => void;
   onPasteOverwrite: () => void;
 };
@@ -19,6 +20,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   onCut,
   onDelete,
   onClearSelection,
+  onClearClipboard,
   onPasteInsert,
   onPasteOverwrite,
 }) => {
@@ -67,6 +69,18 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
 
         {canPaste && (
           <div className="mt-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] text-indigo-600 font-bold">クリップボード</div>
+              <button
+                type="button"
+                onClick={onClearClipboard}
+                className="text-[10px] text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                title="クリップボードを消去"
+              >
+                <X className="w-3 h-3" />
+                解除
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
