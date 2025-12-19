@@ -20,7 +20,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   if (!showSelectionActions) return null;
 
   return (
-    <div className="pointer-events-none absolute left-0 right-0 bottom-0 pb-[96px] px-3">
+    <div className="pointer-events-none absolute left-0 right-0 bottom-0 z-40 pb-[96px] px-3">
       <div className="pointer-events-auto max-w-md mx-auto">
         {showSelectionActions && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-lg">
