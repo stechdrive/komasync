@@ -10,7 +10,7 @@ type TimesheetViewportProps = {
   editTarget: EditTarget;
   selection: SelectionRange | null;
   fps: number;
-  isPlaying: boolean;
+  isAutoScrollActive: boolean;
   onFrameTap: (frame: number) => void;
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
@@ -24,7 +24,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   editTarget,
   selection,
   fps,
-  isPlaying,
+  isAutoScrollActive,
   onFrameTap,
   onBackgroundClick,
   onFirstVisibleColumnChange,
@@ -82,7 +82,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, [framesPerColumn, viewportHeight]);
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isAutoScrollActive) {
       lastAutoSheetRef.current = null;
       return;
     }
@@ -96,7 +96,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     // 再生中にシート境界へ到達したら自動スクロール
     const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
     el.scrollTo({ left: targetLeft, behavior: 'smooth' });
-  }, [columnWidth, currentFrame, framesPerSheet, isPlaying]);
+  }, [columnWidth, currentFrame, framesPerSheet, isAutoScrollActive]);
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
