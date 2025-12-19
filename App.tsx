@@ -886,6 +886,7 @@ export default function App() {
         editTarget={editTarget}
         selection={selection}
         fps={FPS}
+        isPlaying={recordingState === RecordingState.PLAYING}
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
         onFirstVisibleColumnChange={setViewportFirstColumn}
