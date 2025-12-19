@@ -26,6 +26,9 @@ import { DEFAULT_FPS, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
 
 const FPS = DEFAULT_FPS;
+const SCRUB_PREVIEW_SEC = 0.08;
+const SCRUB_FADE_SEC = 0.01;
+const SCRUB_THROTTLE_MS = 50;
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -96,6 +99,9 @@ export default function App() {
   
   // Store source nodes for each track for mixed playback
   const sourceNodesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+  const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode }[]>([]);
+  const scrubLastTimeRef = useRef(0);
+  const isScrubbingRef = useRef(false);
   
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
@@ -108,6 +114,7 @@ export default function App() {
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopScrubSources();
       stopAllSources();
       stopVuMeter();
       stopMicStream();
@@ -182,6 +189,7 @@ export default function App() {
     if (window.confirm("プロジェクトを初期化します。\n録音データも含め、現在の作業内容はすべて失われます。\nよろしいですか？")) {
         // Stop playback/recording first
         stopAllSources();
+        stopScrubSources();
         stopVuMeter();
         stopMicStream();
         cancelAnimationFrame(animationFrameRef.current);
@@ -199,6 +207,7 @@ export default function App() {
         setRecordingState(RecordingState.IDLE);
         recordingStartFrameRef.current = 0;
         recordingStartTimeRef.current = 0;
+        isScrubbingRef.current = false;
     }
   };
 
@@ -252,6 +261,76 @@ export default function App() {
     cancelAnimationFrame(animationFrameRef.current);
   };
 
+  const stopScrubSources = () => {
+    scrubNodesRef.current.forEach(({ source, gain }) => {
+      try {
+        source.stop();
+      } catch {
+        // no-op
+      }
+      try {
+        source.disconnect();
+      } catch {
+        // no-op
+      }
+      try {
+        gain.disconnect();
+      } catch {
+        // no-op
+      }
+    });
+    scrubNodesRef.current = [];
+  };
+
+  const playScrubPreview = (frame: number) => {
+    const now = performance.now();
+    if (now - scrubLastTimeRef.current < SCRUB_THROTTLE_MS) return;
+    scrubLastTimeRef.current = now;
+
+    const audibleTracks = tracks.filter((track) => track.audioBuffer && !track.isMuted);
+    if (audibleTracks.length === 0) {
+      stopScrubSources();
+      return;
+    }
+
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
+    }
+
+    stopScrubSources();
+
+    const offset = frame / FPS;
+    const nowTime = ctx.currentTime;
+
+    audibleTracks.forEach((track) => {
+      const buffer = track.audioBuffer;
+      if (!buffer) return;
+      if (offset >= buffer.duration) return;
+      const duration = Math.min(SCRUB_PREVIEW_SEC, buffer.duration - offset);
+      if (duration <= 0) return;
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = ctx.createGain();
+      const fade = Math.min(SCRUB_FADE_SEC, duration / 2);
+      const hold = Math.max(0, duration - fade);
+      gain.gain.setValueAtTime(0, nowTime);
+      gain.gain.linearRampToValueAtTime(1, nowTime + fade);
+      gain.gain.setValueAtTime(1, nowTime + hold);
+      gain.gain.linearRampToValueAtTime(0, nowTime + duration);
+
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.start(0, offset, duration);
+      scrubNodesRef.current.push({ source, gain });
+    });
+  };
+
   // Helper to start playback (used by both Play button and Recording start)
   const startPlayback = (startFrame: number, mode: RecordingState) => {
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -264,6 +343,7 @@ export default function App() {
     }
 
     stopAllSources();
+    stopScrubSources();
 
     const offsetTime = startFrame / FPS;
     let maxDuration = 0;
@@ -374,6 +454,8 @@ export default function App() {
       await audioContextRef.current.resume();
     }
 
+    stopScrubSources();
+    isScrubbingRef.current = false;
     startVuMeter(stream);
 
     const mimeType = getSupportedMimeType();
@@ -759,6 +841,9 @@ export default function App() {
     const hasAudio = tracks.some(t => t.audioBuffer !== null);
     if (!hasAudio) return;
 
+    stopScrubSources();
+    isScrubbingRef.current = false;
+
     const endFrame = Math.max(0, maxFrames - 1);
     const startFrame = currentFrame >= endFrame ? 0 : currentFrame;
     if (startFrame !== currentFrame) {
@@ -855,6 +940,30 @@ export default function App() {
 
   const handleSelectionChange = (range: SelectionRange | null) => {
     setSelection(range);
+  };
+
+  const handleScrubStart = (frame: number) => {
+    if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
+    if (recordingState === RecordingState.PLAYING) handlePause();
+    isScrubbingRef.current = true;
+    scrubLastTimeRef.current = 0;
+    const nextFrame = Math.max(0, Math.floor(frame));
+    setCurrentFrame(nextFrame);
+    playScrubPreview(nextFrame);
+  };
+
+  const handleScrubMove = (frame: number) => {
+    if (!isScrubbingRef.current) return;
+    if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
+    const nextFrame = Math.max(0, Math.floor(frame));
+    setCurrentFrame(nextFrame);
+    playScrubPreview(nextFrame);
+  };
+
+  const handleScrubEnd = () => {
+    if (!isScrubbingRef.current) return;
+    isScrubbingRef.current = false;
+    stopScrubSources();
   };
 
   // --- Keyboard Shortcuts ---
@@ -959,6 +1068,9 @@ export default function App() {
         onOpenContextMenu={handleOpenClipboardMenu}
         onSelectionChange={handleSelectionChange}
         onTrackSelect={handleTrackSelect}
+        onScrubStart={handleScrubStart}
+        onScrubMove={handleScrubMove}
+        onScrubEnd={handleScrubEnd}
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
