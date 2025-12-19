@@ -72,6 +72,7 @@ export default function App() {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
   const [vadStability, setVadStability] = useState(0.6);
+  const [vadThresholdScale, setVadThresholdScale] = useState(1);
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -130,13 +131,13 @@ export default function App() {
     // Note: VAD settings changes usually don't need undo history as they are non-destructive view changes,
     // but here we modify the derived 'frames' property. We won't push to history for VAD調整
     // to avoid spamming the undo stack.
-    const tuning = getVadTuning(vadPreset, vadStability);
+    const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
     setTracks((prevTracks) =>
       prevTracks.map((track) =>
         track.audioBuffer ? { ...track, frames: analyzeAudioBufferWithVad(track.audioBuffer, FPS, tuning) } : { ...track, frames: [] }
       )
     );
-  }, [vadPreset, vadStability]);
+  }, [vadPreset, vadStability, vadThresholdScale]);
 
   // --- History Management ---
   const HISTORY_LIMIT = 30;
@@ -156,7 +157,7 @@ export default function App() {
     setTracks(
       previous.map((t) =>
         t.audioBuffer
-          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability)) }
+          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
           : { ...t, frames: [] }
       )
     );
@@ -164,7 +165,7 @@ export default function App() {
     
     // Reset selection to avoid ghost selections
     setSelection(null);
-  }, [historyPast, tracks, vadPreset, vadStability]);
+  }, [historyPast, tracks, vadPreset, vadStability, vadThresholdScale]);
 
   const handleRedo = useCallback(() => {
     if (historyFuture.length === 0) return;
@@ -176,14 +177,14 @@ export default function App() {
     setTracks(
       next.map((t) =>
         t.audioBuffer
-          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability)) }
+          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
           : { ...t, frames: [] }
       )
     );
     setHistoryFuture(newFuture);
 
     setSelection(null);
-  }, [historyFuture, tracks, vadPreset, vadStability]);
+  }, [historyFuture, tracks, vadPreset, vadStability, vadThresholdScale]);
 
   const handleResetProject = () => {
     if (window.confirm("プロジェクトを初期化します。\n録音データも含め、現在の作業内容はすべて失われます。\nよろしいですか？")) {
@@ -590,7 +591,7 @@ export default function App() {
         }
       }
 
-      const newFrames = analyzeAudioBufferWithVad(finalBuffer, FPS, getVadTuning(vadPreset, vadStability));
+      const newFrames = analyzeAudioBufferWithVad(finalBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale));
       
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
@@ -670,7 +671,7 @@ export default function App() {
         return {
           ...track,
           audioBuffer: newBuffer,
-          frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)),
+          frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)),
         };
       });
 
@@ -698,7 +699,7 @@ export default function App() {
         if (!targetSet.has(track.id) || !track.audioBuffer) return track;
 
         const newBuffer = deleteAudioRangeRipple(track.audioBuffer, range.startFrame, range.endFrame, FPS);
-        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
       });
 
       setTracks(nextTracks);
@@ -733,7 +734,7 @@ export default function App() {
           tracks.map((track) => {
             const clip = clipboardClip.byTrackId[track.id];
             const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
           })
         );
       } else {
@@ -747,7 +748,7 @@ export default function App() {
           tracks.map((track) => {
             if (track.id !== editTarget) return track;
             const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
           })
         );
       }
@@ -782,7 +783,7 @@ export default function App() {
           tracks.map((track) => {
             const clip = clipboardClip.byTrackId[track.id];
             const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
           })
         );
       } else {
@@ -796,7 +797,7 @@ export default function App() {
           tracks.map((track) => {
             if (track.id !== editTarget) return track;
             const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
           })
         );
       }
@@ -824,7 +825,7 @@ export default function App() {
           sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
-        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability)) };
+        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
       });
 
       setTracks(nextTracks);
@@ -1006,6 +1007,7 @@ export default function App() {
 
   const totalTimecode = formatTimecode(maxFrames, FPS);
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
+  const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
   const targetLabel =
     editTarget === 'all' ? '全トラック' : tracks.find((t) => t.id === editTarget)?.name ?? `Track ${editTarget}`;
@@ -1045,6 +1047,9 @@ export default function App() {
           isMicReady={isMicReady}
           isMicPreparing={isMicPreparing}
           isAllTracks={editTarget === 'all'}
+          vadThresholdScale={vadThresholdScale}
+          vadThresholdValue={vadTuning.startThreshold}
+          onChangeVadThresholdScale={setVadThresholdScale}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onStartRecording={handleStartRecording}
@@ -1090,6 +1095,7 @@ export default function App() {
         recordTrackId={recordTrackId}
         vadPreset={vadPreset}
         vadStability={vadStability}
+        vadThresholdScale={vadThresholdScale}
         inputRms={inputRms}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}

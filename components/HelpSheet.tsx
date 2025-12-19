@@ -56,6 +56,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>録音ボタンで録音開始、停止で終了します。</li>
                 <li>準備中…表示の後に録音が開始します。</li>
                 <li>録音トラックはタイムシート上のセルをタップして選択します。</li>
+                <li>下部の「閾値」スライダーで音声検出の感度を調整します。</li>
                 <li>「その他」から録音中の再生ON/OFFを切り替えられます。</li>
               </ul>
             </section>

@@ -10,6 +10,7 @@ type MoreSheetProps = {
   recordTrackId: string;
   vadPreset: VadPreset;
   vadStability: number;
+  vadThresholdScale: number;
   inputRms: number;
   playWhileRecording: boolean;
   onClose: () => void;
@@ -28,6 +29,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   recordTrackId,
   vadPreset,
   vadStability,
+  vadThresholdScale,
   inputRms,
   playWhileRecording,
   onClose,
@@ -42,7 +44,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   if (!isOpen) return null;
 
   const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? `Track ${recordTrackId}`;
-  const vadTuning = getVadTuning(vadPreset, vadStability);
+  const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const stabilityPercent = Math.round(vadStability * 100);
 
   return (

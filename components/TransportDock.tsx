@@ -9,6 +9,9 @@ type TransportDockProps = {
   isMicReady: boolean;
   isMicPreparing: boolean;
   isAllTracks: boolean;
+  vadThresholdScale: number;
+  vadThresholdValue: number;
+  onChangeVadThresholdScale: (scale: number) => void;
   onToggleAllTracks: () => void;
   onInsertOneFrame: () => void;
   onStartRecording: () => void;
@@ -24,6 +27,9 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   isMicReady,
   isMicPreparing,
   isAllTracks,
+  vadThresholdScale,
+  vadThresholdValue,
+  onChangeVadThresholdScale,
   onToggleAllTracks,
   onInsertOneFrame,
   onStartRecording,
@@ -35,6 +41,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   const isPlaying = recordingState === RecordingState.PLAYING;
   const isBusy = recordingState === RecordingState.PROCESSING;
   const isPreparing = isMicPreparing && !isRecording;
+  const thresholdPercent = Math.round(vadThresholdScale * 100);
 
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
@@ -84,6 +91,23 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         >
           {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </button>
+
+        <div className="h-12 w-[92px] rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
+          <div className="flex items-center justify-between text-[9px] text-gray-500 leading-none">
+            <span>閾値</span>
+            <span className="font-mono text-[9px]">{vadThresholdValue.toFixed(3)}</span>
+          </div>
+          <input
+            type="range"
+            min="50"
+            max="150"
+            step="1"
+            value={thresholdPercent}
+            onChange={(e) => onChangeVadThresholdScale(parseInt(e.target.value, 10) / 100)}
+            className="mt-1 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+            aria-label="音声検出の閾値"
+          />
+        </div>
 
         <button
           type="button"
