@@ -124,7 +124,6 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     key={track.id}
                     data-frame-index={globalFrameIndex}
                     data-track-id={track.id}
-                    onClick={() => onFrameTap(globalFrameIndex)}
                     className={`relative cursor-pointer ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
                       touchAction: 'pan-x',
