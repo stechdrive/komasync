@@ -70,6 +70,8 @@ export default function App() {
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isMicReady, setIsMicReady] = useState(false);
+  const [isMicPreparing, setIsMicPreparing] = useState(false);
   const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   
@@ -83,6 +85,9 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStartFrameRef = useRef<number>(0);
   const recordingStartTimeRef = useRef<number>(0);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micPreparePromiseRef = useRef<Promise<MediaStream> | null>(null);
+  const pendingRecordStartRef = useRef(false);
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -104,6 +109,7 @@ export default function App() {
     return () => {
       stopAllSources();
       stopVuMeter();
+      stopMicStream();
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
@@ -178,6 +184,7 @@ export default function App() {
         // Stop playback/recording first
         stopAllSources();
         stopVuMeter();
+        stopMicStream();
         cancelAnimationFrame(animationFrameRef.current);
         
         // Reset all states
@@ -353,99 +360,100 @@ export default function App() {
     vuAnimationFrameRef.current = requestAnimationFrame(tick);
   };
 
+  const startRecordingWithStream = async (stream: MediaStream) => {
+    // Ensure context is running first for better sync
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    startVuMeter(stream);
+
+    const mimeType = getSupportedMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+
+    mediaRecorderRef.current = new MediaRecorder(stream, options);
+    audioChunksRef.current = [];
+
+    // Mark the frame where recording started (Punch-in support)
+    recordingStartFrameRef.current = currentFrame;
+    recordingStartTimeRef.current = Date.now();
+
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunksRef.current.push(event.data);
+      }
+    };
+
+    mediaRecorderRef.current.onstop = async () => {
+      // Enforce minimum duration of 200ms to avoid empty/corrupt files on accidental double-click
+      const duration = Date.now() - recordingStartTimeRef.current;
+      if (duration < 200) {
+        console.warn("Recording too short, discarded.");
+        stopVuMeter();
+        stopAllSources();
+        cancelAnimationFrame(animationFrameRef.current);
+        setRecordingState(RecordingState.IDLE);
+        return;
+      }
+
+      if (audioChunksRef.current.length === 0 || (audioChunksRef.current.length === 1 && audioChunksRef.current[0].size === 0)) {
+        console.warn("Recording was empty.");
+        stopVuMeter();
+        stopAllSources();
+        cancelAnimationFrame(animationFrameRef.current);
+        setRecordingState(RecordingState.IDLE);
+        return;
+      }
+
+      const finalMimeType = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
+
+      // Pass the start frame to the loader to overwrite at correct position
+      await loadAudioBlobToTrack(audioBlob, recordTrackId, recordingStartFrameRef.current);
+
+      stopVuMeter();
+
+      // Also stop playback if it was running
+      stopAllSources();
+      cancelAnimationFrame(animationFrameRef.current);
+    };
+
+    // Start Recording
+    mediaRecorderRef.current.start();
+    setRecordingState(RecordingState.RECORDING);
+
+    // Start Playback from CURRENT frame (not 0) if enabled
+    if (playWhileRecording) {
+      startPlayback(currentFrame, RecordingState.RECORDING);
+    } else {
+      // If not playing back, we still need to advance the frame counter for visual feedback
+      // Adjust start time relative to current frame
+      const offsetTime = currentFrame / FPS;
+      startTimeRef.current = (Date.now() / 1000) - offsetTime;
+
+      const updateFrameSimple = () => {
+        const elapsed = (Date.now() / 1000) - startTimeRef.current;
+        setCurrentFrame(Math.floor(elapsed * FPS));
+        animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
+      };
+      animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
+    }
+  };
+
   const handleStartRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("お使いのブラウザは録音機能をサポートしていません。");
-        return;
+      alert("お使いのブラウザは録音機能をサポートしていません。");
+      return;
     }
 
     try {
-      // Ensure context is running first for better sync
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      startVuMeter(stream);
-      
-      const mimeType = getSupportedMimeType();
-      const options = mimeType ? { mimeType } : undefined;
-      
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
-      audioChunksRef.current = [];
-
-      // Mark the frame where recording started (Punch-in support)
-      recordingStartFrameRef.current = currentFrame;
-      recordingStartTimeRef.current = Date.now();
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorderRef.current.onstop = async () => {
-        // Enforce minimum duration of 200ms to avoid empty/corrupt files on accidental double-click
-        const duration = Date.now() - recordingStartTimeRef.current;
-        if (duration < 200) {
-             console.warn("Recording too short, discarded.");
-             stopVuMeter();
-             stream.getTracks().forEach(track => track.stop());
-             stopAllSources();
-             cancelAnimationFrame(animationFrameRef.current);
-             setRecordingState(RecordingState.IDLE);
-             return;
-        }
-
-        if (audioChunksRef.current.length === 0 || (audioChunksRef.current.length === 1 && audioChunksRef.current[0].size === 0)) {
-             console.warn("Recording was empty.");
-             stopVuMeter();
-             stream.getTracks().forEach(track => track.stop());
-             stopAllSources();
-             cancelAnimationFrame(animationFrameRef.current);
-             setRecordingState(RecordingState.IDLE);
-             return;
-        }
-
-        const finalMimeType = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
-        
-        // Pass the start frame to the loader to overwrite at correct position
-        await loadAudioBlobToTrack(audioBlob, recordTrackId, recordingStartFrameRef.current);
-        
-        stopVuMeter();
-        // Properly stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Also stop playback if it was running
-        stopAllSources();
-        cancelAnimationFrame(animationFrameRef.current);
-      };
-      
-      // Start Recording
-      mediaRecorderRef.current.start();
-      setRecordingState(RecordingState.RECORDING);
-
-      // Start Playback from CURRENT frame (not 0) if enabled
-      if (playWhileRecording) {
-          startPlayback(currentFrame, RecordingState.RECORDING);
-      } else {
-          // If not playing back, we still need to advance the frame counter for visual feedback
-          // Adjust start time relative to current frame
-          const offsetTime = currentFrame / FPS;
-          startTimeRef.current = (Date.now() / 1000) - offsetTime;
-          
-          const updateFrameSimple = () => {
-              const elapsed = (Date.now() / 1000) - startTimeRef.current;
-              setCurrentFrame(Math.floor(elapsed * FPS));
-              animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
-          };
-          animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
-      }
-
+      pendingRecordStartRef.current = true;
+      const stream = await ensureMicReady();
+      if (!pendingRecordStartRef.current) return;
+      await startRecordingWithStream(stream);
     } catch (err: any) {
       console.error("Error accessing microphone:", err);
       
@@ -458,6 +466,8 @@ export default function App() {
       } else {
         alert("録音の開始に失敗しました。");
       }
+    } finally {
+      pendingRecordStartRef.current = false;
     }
   };
 
@@ -761,6 +771,50 @@ export default function App() {
     sourceNodesRef.current.clear();
   };
 
+  const stopMicStream = () => {
+    const stream = micStreamRef.current;
+    pendingRecordStartRef.current = false;
+    micPreparePromiseRef.current = null;
+    setIsMicPreparing(false);
+    setIsMicReady(false);
+    if (!stream) return;
+    stream.getTracks().forEach((track) => track.stop());
+    micStreamRef.current = null;
+  };
+
+  const isStreamLive = (stream: MediaStream | null): boolean =>
+    Boolean(stream && stream.getTracks().some((track) => track.readyState === 'live'));
+
+  const ensureMicReady = useCallback(async (): Promise<MediaStream> => {
+    if (isStreamLive(micStreamRef.current)) {
+      setIsMicReady(true);
+      return micStreamRef.current as MediaStream;
+    }
+
+    if (micPreparePromiseRef.current) {
+      return micPreparePromiseRef.current;
+    }
+
+    setIsMicPreparing(true);
+    const prepare = navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        micStreamRef.current = stream;
+        setIsMicReady(true);
+        return stream;
+      })
+      .catch((err) => {
+        setIsMicReady(false);
+        throw err;
+      })
+      .finally(() => {
+        setIsMicPreparing(false);
+        micPreparePromiseRef.current = null;
+      });
+
+    micPreparePromiseRef.current = prepare;
+    return prepare;
+  }, []);
+
   const handlePause = () => {
     stopPlaybackLoop();
     setRecordingState(RecordingState.PAUSED);
@@ -883,6 +937,8 @@ export default function App() {
           tracks={tracks}
           recordTrackId={recordTrackId}
           editTarget={editTarget}
+          isMicReady={isMicReady}
+          isMicPreparing={isMicPreparing}
           isSelectionMode={isSelectionMode}
           onSelectTarget={handleSelectTarget}
           onToggleSelectionMode={handleToggleSelectionMode}
