@@ -12,6 +12,7 @@ type SheetRenderConfig = {
   footerHeight: number;
   rowHeight: number;
   rulerWidth: number;
+  rightRulerWidth: number;
   trackWidth: number;
   vadAlpha: number;
 };
@@ -23,6 +24,7 @@ const DEFAULT_CONFIG: SheetRenderConfig = {
   footerHeight: 24,
   rowHeight: 12,
   rulerWidth: 60,
+  rightRulerWidth: 60,
   trackWidth: 70,
   vadAlpha: 0.28,
 };
@@ -60,7 +62,7 @@ const drawSheetToCanvas = (
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
 
-  const columnWidth = config.rulerWidth + config.trackWidth * tracks.length;
+  const columnWidth = config.rulerWidth + config.trackWidth * tracks.length + config.rightRulerWidth;
   const sheetWidth = config.margin * 2 + columnWidth * COLUMNS_PER_SHEET;
   const sheetHeight =
     config.margin * 2 + config.headerHeight + framesPerColumn * config.rowHeight + config.footerHeight;
@@ -134,7 +136,17 @@ const drawSheetToCanvas = (
       ctx.lineTo(x, gridTop + framesPerColumn * config.rowHeight);
       ctx.stroke();
     }
+
+    // 右ルーラー境界
+    const rightRulerLeft = colX + config.rulerWidth + config.trackWidth * tracks.length;
+    ctx.beginPath();
+    ctx.moveTo(rightRulerLeft, gridTop);
+    ctx.lineTo(rightRulerLeft, gridTop + framesPerColumn * config.rowHeight);
+    ctx.stroke();
   }
+
+  const showAllFrameLabels = config.rowHeight >= 10;
+  const labelFontSize = showAllFrameLabels ? 9 : 10;
 
   // グリッド（横線＋塗り）
   for (let row = 0; row < framesPerColumn; row++) {
@@ -143,9 +155,11 @@ const drawSheetToCanvas = (
     const isSecond = frameInSecond % fps === 0;
     const half = Math.floor(fps / 2);
     const isHalfSecond = half > 0 ? frameInSecond % half === 0 : false;
+    const isSixFrame = frameInSecond % 6 === 0;
+    const showFrameLabel = showAllFrameLabels || frameInSecond === 1 || frameInSecond % 6 === 0;
 
     // 横線
-    ctx.strokeStyle = isSecond ? '#111827' : isHalfSecond ? '#9ca3af' : '#e5e7eb';
+    ctx.strokeStyle = isSecond ? '#111827' : isHalfSecond ? '#9ca3af' : isSixFrame ? '#d1d5db' : '#e5e7eb';
     ctx.lineWidth = isSecond ? 1.5 : 1;
     ctx.beginPath();
     ctx.moveTo(gridLeft, y);
@@ -153,14 +167,20 @@ const drawSheetToCanvas = (
     ctx.stroke();
 
     // ルーラー数値（各列）
-    if (isSecond) {
+    if (showFrameLabel) {
       ctx.fillStyle = '#4b5563';
-      ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.font = `600 ${labelFontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      ctx.textAlign = 'center';
       for (let col = 0; col < COLUMNS_PER_SHEET; col++) {
         const colX = gridLeft + col * columnWidth;
+        const localFrame = col * framesPerColumn + frameInSecond;
+        const rightRulerLeft = colX + config.rulerWidth + config.trackWidth * tracks.length;
+        const globalFrame = sheetStartFrame + col * framesPerColumn + row + 1;
+
+        ctx.fillText(String(localFrame), colX + config.rulerWidth / 2, y + config.rowHeight / 2);
         ctx.fillText(
-          String(frameInSecond),
-          colX + config.rulerWidth / 2,
+          String(globalFrame),
+          rightRulerLeft + config.rightRulerWidth / 2,
           y + config.rowHeight / 2
         );
       }
@@ -195,6 +215,8 @@ const drawSheetToCanvas = (
       }
     }
   }
+
+  ctx.textAlign = 'left';
 
   // 下端線
   ctx.strokeStyle = '#111827';
