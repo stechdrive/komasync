@@ -20,15 +20,15 @@ body,
   --ui-sm: 0.75rem;
 }
 
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 640px) {
   :root {
-    --topbar-h: 3.75rem;
-    --control-size: 3.25rem;
-    --control-icon: 1.5rem;
-    --record-h: 4rem;
-    --control-wide: 21rem;
-    --ui-xs: 0.75rem;
-    --ui-sm: 0.8125rem;
+    --topbar-h: 4.25rem;
+    --control-size: 3.75rem;
+    --control-icon: 1.75rem;
+    --record-h: 4.5rem;
+    --control-wide: 23rem;
+    --ui-xs: 0.875rem;
+    --ui-sm: 1rem;
   }
 }
 
