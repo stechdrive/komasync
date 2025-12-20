@@ -5,20 +5,31 @@ import { Track } from '../types';
  * Encodes an AudioBuffer to a WAV format (Blob)
  * Converts Float32 audio data to Int16 PCM standard WAV
  */
-const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+const audioBufferToWav = (buffer: AudioBuffer, targetLength?: number): Blob => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const format = 1; // PCM
   const bitDepth = 16;
-  
+
+  const channelLength = targetLength && targetLength > buffer.length ? targetLength : buffer.length;
+
   let result;
   if (numChannels === 2) {
-    result = interleave(buffer.getChannelData(0), buffer.getChannelData(1));
+    const left = padChannel(buffer.getChannelData(0), channelLength);
+    const right = padChannel(buffer.getChannelData(1), channelLength);
+    result = interleave(left, right);
   } else {
-    result = buffer.getChannelData(0);
+    result = padChannel(buffer.getChannelData(0), channelLength);
   }
 
   return encodeWAV(result, numChannels, sampleRate, bitDepth);
+};
+
+const padChannel = (input: Float32Array, targetLength: number): Float32Array => {
+  if (targetLength <= input.length) return input;
+  const padded = new Float32Array(targetLength);
+  padded.set(input);
+  return padded;
 };
 
 const interleave = (inputL: Float32Array, inputR: Float32Array) => {
@@ -93,21 +104,23 @@ const writeString = (view: DataView, offset: number, string: string) => {
  */
 export const exportTracksToZip = async (tracks: Track[]): Promise<void> => {
   const zip = new JSZip();
-  let hasAudio = false;
+  const tracksWithAudio = tracks.filter((track) => track.audioBuffer && track.audioBuffer.length > 0);
 
-  tracks.forEach((track) => {
-    if (track.audioBuffer && track.audioBuffer.length > 0) {
-      hasAudio = true;
-      const wavBlob = audioBufferToWav(track.audioBuffer);
-      // Clean filename
-      const safeName = track.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      zip.file(`${safeName}.wav`, wavBlob);
-    }
-  });
-
-  if (!hasAudio) {
+  if (tracksWithAudio.length === 0) {
     throw new Error("エクスポートする音声データがありません。");
   }
+
+  // 既存の尺に合わせて全トラックを無音でパディングする。
+  const maxDuration = Math.max(...tracksWithAudio.map((track) => track.audioBuffer?.duration ?? 0));
+
+  tracksWithAudio.forEach((track) => {
+    if (!track.audioBuffer) return;
+    const targetLength = Math.max(track.audioBuffer.length, Math.ceil(maxDuration * track.audioBuffer.sampleRate));
+    const wavBlob = audioBufferToWav(track.audioBuffer, targetLength);
+    // Clean filename
+    const safeName = track.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    zip.file(`${safeName}.wav`, wavBlob);
+  });
 
   const content = await zip.generateAsync({ type: 'blob' });
   
