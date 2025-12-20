@@ -1,7 +1,7 @@
 {
   "name": "komasync",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "author": "stechdrive",
   "license": "MIT",
   "homepage": "https://stechdrive.github.io/komasync/",
@@ -22,10 +22,11 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "jszip": "3.10.1",
     "lucide-react": "^0.561.0",
-    "react-dom": "^19.2.3",
+    "onnxruntime-web": "^1.19.0",
     "react": "^19.2.3",
-    "jszip": "3.10.1"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
