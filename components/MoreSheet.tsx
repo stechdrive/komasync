@@ -69,6 +69,12 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
       : vadEngineStatus === 'fallback'
         ? 'text-gray-600'
         : 'text-gray-400';
+  const isSecureContext = typeof window !== 'undefined' && window.isSecureContext;
+  const isCrossOriginIsolated = typeof window !== 'undefined' && window.crossOriginIsolated;
+  const hasSharedArrayBuffer = typeof window !== 'undefined' && 'SharedArrayBuffer' in window;
+  const serviceWorkerControlled =
+    typeof navigator !== 'undefined' && 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
+  const diagValueClass = (value: boolean): string => (value ? 'text-blue-600' : 'text-gray-500');
   const autoCaption = isVadAuto
     ? '6コマ以上の録音があると自動で最適化'
     : '手動で感度と途切れにくさを調整できます';
@@ -186,8 +192,24 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                         自動調整中は詳細設定を変更できません。
                       </div>
                     )}
-                    <div className="text-[11px] text-gray-500">
-                      開発用: VADエンジン <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
+                    <div className="text-[11px] text-gray-500 space-y-1">
+                      <div>
+                        開発用: VADエンジン <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
+                        <span className={diagValueClass(isCrossOriginIsolated)}>
+                          COI:{isCrossOriginIsolated ? 'OK' : 'NG'}
+                        </span>
+                        <span className={diagValueClass(isSecureContext)}>
+                          Secure:{isSecureContext ? 'OK' : 'NG'}
+                        </span>
+                        <span className={diagValueClass(hasSharedArrayBuffer)}>
+                          SAB:{hasSharedArrayBuffer ? 'OK' : 'NG'}
+                        </span>
+                        <span className={diagValueClass(serviceWorkerControlled)}>
+                          SW:{serviceWorkerControlled ? 'OK' : 'NG'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="text-xs text-gray-600">
