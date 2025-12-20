@@ -19,6 +19,7 @@ type TimesheetViewportProps = {
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
   onOpenSelectionMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
+  onSelectionScrub?: (frame: number, trackId: string) => void;
   onTrackSelect?: (trackId: string) => void;
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
@@ -44,6 +45,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onFirstVisibleColumnChange,
   onOpenSelectionMenu,
   onSelectionChange,
+  onSelectionScrub,
   onTrackSelect,
   onScrubStart,
   onScrubMove,
@@ -724,6 +726,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
       selectionRangeRef.current = range;
       onSelectionChange?.(range);
+      if (e.pointerType === 'touch' && onSelectionScrub) {
+        onSelectionScrub(target.frame, target.trackId);
+      }
       return;
     }
 

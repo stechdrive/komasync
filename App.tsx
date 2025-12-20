@@ -676,12 +676,14 @@ export default function App() {
     scrubNodesRef.current = [];
   }, []);
 
-  const playScrubPreview = useCallback((frame: number) => {
+  const playScrubPreview = useCallback((frame: number, trackId?: string) => {
     const now = performance.now();
     if (now - scrubLastTimeRef.current < SCRUB_THROTTLE_MS) return;
     scrubLastTimeRef.current = now;
 
-    const audibleTracks = tracks.filter((track) => track.audioBuffer && !track.isMuted);
+    const audibleTracks = trackId
+      ? tracks.filter((track) => track.id === trackId && track.audioBuffer && !track.isMuted)
+      : tracks.filter((track) => track.audioBuffer && !track.isMuted);
     if (audibleTracks.length === 0) {
       stopScrubSources();
       return;
@@ -1585,6 +1587,21 @@ export default function App() {
     setSelectionMenu(null);
   };
 
+  const handleSelectionScrub = useCallback(
+    (frame: number, trackId: string) => {
+      if (editTarget === 'all') return;
+      if (
+        recordingState === RecordingState.RECORDING ||
+        recordingState === RecordingState.PROCESSING ||
+        recordingState === RecordingState.PLAYING
+      ) {
+        return;
+      }
+      playScrubPreview(frame, trackId);
+    },
+    [editTarget, playScrubPreview, recordingState]
+  );
+
   const handleOpenSelectionMenu = useCallback((point: { x: number; y: number }) => {
     setSelectionMenu(point);
   }, []);
@@ -1819,6 +1836,7 @@ export default function App() {
         onBackgroundClick={handleBackgroundClick}
         onOpenSelectionMenu={handleOpenSelectionMenu}
         onSelectionChange={handleSelectionChange}
+        onSelectionScrub={handleSelectionScrub}
         onTrackSelect={handleTrackSelect}
         onScrubStart={handleScrubStart}
         onScrubMove={handleScrubMove}
