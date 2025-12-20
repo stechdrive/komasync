@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { RotateCcw, Scissors, Tag, TagOff, Trash2, X } from 'lucide-react';
+import { Ban, RotateCcw, Scissors, Tag, Trash2, X } from 'lucide-react';
 
 type EditPaletteProps = {
   selectionCount: number;
@@ -107,7 +107,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
                   onClick={onMarkNonSpeech}
                   className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-2 rounded-lg text-[var(--ui-xs)] font-bold"
                 >
-                  <TagOff className="w-3.5 h-3.5" /> 解除
+                  <Ban className="w-3.5 h-3.5" /> 解除
                 </button>
                 <button
                   type="button"
