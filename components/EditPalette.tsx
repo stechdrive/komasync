@@ -1,27 +1,56 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Scissors, Trash2, X } from 'lucide-react';
 
 type EditPaletteProps = {
   selectionCount: number;
   targetLabel: string;
+  anchor: { x: number; y: number } | null;
   onCut: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
 };
 
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
 export const EditPalette: React.FC<EditPaletteProps> = ({
   selectionCount,
   targetLabel,
+  anchor,
   onCut,
   onDelete,
   onClearSelection,
 }) => {
   const showSelectionActions = selectionCount > 0;
-  if (!showSelectionActions) return null;
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuSize, setMenuSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    if (!showSelectionActions || !anchor) return;
+    const rect = menuRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuSize({ width: rect.width, height: rect.height });
+  }, [anchor, showSelectionActions]);
+
+  if (!showSelectionActions || !anchor) return null;
+
+  const padding = 12;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const width = menuSize.width || 280;
+  const height = menuSize.height || 140;
+  const left = clamp(anchor.x - width / 2, padding, viewportWidth - width - padding);
+  const preferTop = anchor.y - height - 12;
+  const top = preferTop >= padding
+    ? preferTop
+    : clamp(anchor.y + 12, padding, viewportHeight - height - padding);
 
   return (
-    <div className="pointer-events-none absolute left-0 right-0 bottom-0 z-40 pb-[96px] px-3">
-      <div className="pointer-events-auto max-w-md mx-auto">
+    <div className="pointer-events-none fixed inset-0 z-40">
+      <div
+        ref={menuRef}
+        className="pointer-events-auto w-[min(92vw,24rem)]"
+        style={{ left, top, position: 'absolute' }}
+      >
         {showSelectionActions && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-lg">
             <div className="flex items-center justify-between mb-2">

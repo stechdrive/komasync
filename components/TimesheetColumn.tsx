@@ -123,7 +123,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="left"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
-                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'pan-x pan-y' }}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'none' }}
               >
                 {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
@@ -158,7 +158,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     data-track-id={track.id}
                     className={`relative ${cellCursor} ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
-                      touchAction: 'pan-x pan-y',
+                      touchAction: 'none',
                       ...(highlightBorder
                         ? { boxShadow: `inset 2px 0 0 ${highlightBorder}, inset -2px 0 0 ${highlightBorder}` }
                         : {}),
@@ -183,7 +183,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="right"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'pan-x pan-y' }}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'none' }}
               >
                 {isCurrent
                   ? formatTimecodeOneBased(globalFrameIndex, fps)
