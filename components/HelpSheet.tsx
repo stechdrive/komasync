@@ -46,6 +46,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>左ルーラーはシート内のコマ数、右ルーラーは総コマ数です。</li>
                 <li>現在行の右ルーラーは「秒+コマ」（1スタート）で表示します。</li>
                 <li>線の強さは「1秒」＞「0.5秒」＞「6コマ」の順です。</li>
+                <li>セリフ色の上に波形が重なって表示されます（トラック内で正規化）。</li>
               </ul>
             </section>
 
@@ -75,6 +76,8 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <ul className="list-disc ml-4 space-y-1">
                 <li>PCはドラッグ、スマホはタップしたままドラッグで範囲選択します。</li>
                 <li>選択範囲は「切り取り」「削除」が可能です。</li>
+                <li>選択メニューのセリフラベルで「セリフ/解除/自動」を切り替えられます。</li>
+                <li>セリフラベルは自動判定より優先され、編集でも追従します。</li>
                 <li>タイムシート上で右クリック/長押しすると貼り付けメニューを開けます。</li>
                 <li>クリップボードがあれば「挿入」「上書き」で貼り付けます。</li>
                 <li>+1fボタンで無音フレームを挿入します。</li>
