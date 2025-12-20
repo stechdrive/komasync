@@ -7,6 +7,8 @@ export type VadTuning = {
   startThreshold: number;
   endThreshold: number;
   holdFrames: number;
+  aggressiveness: number;
+  speechRatio: number;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -31,8 +33,20 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   const hysteresisRatio = clamp(0.85 - 0.25 * stability, 0.55, 0.9);
   const endThreshold = startThreshold * hysteresisRatio;
   const holdFrames = Math.round(2 + 10 * stability);
+  const aggressiveness = (() => {
+    switch (preset) {
+      case 'quiet':
+        return 1;
+      case 'noisy':
+        return 3;
+      case 'normal':
+      default:
+        return 2;
+    }
+  })();
+  const speechRatio = 0.5;
 
-  return { startThreshold, endThreshold, holdFrames };
+  return { startThreshold, endThreshold, holdFrames, aggressiveness, speechRatio };
 };
 
 export const analyzeAudioBufferWithVad = (

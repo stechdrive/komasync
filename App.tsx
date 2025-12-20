@@ -9,7 +9,8 @@ import {
   overwriteAudioAtFrame,
 } from './services/audioEdit';
 import { exportTracksToZip } from './services/audioExporter';
-import { analyzeAudioBufferWithVad, getVadTuning, VadPreset } from './services/vad';
+import { getVadTuning, VadPreset, VadTuning } from './services/vad';
+import { analyzeAudioBufferWithVadEngine } from './services/vadEngine';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
@@ -21,7 +22,7 @@ import { MoreSheet } from './components/MoreSheet';
 import { TopBar } from './components/TopBar';
 import { TransportDock } from './components/TransportDock';
 import { useViewportHeight } from './hooks/useViewportHeight';
-import { RecordingState, Track } from './types';
+import { FrameData, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
@@ -92,6 +93,7 @@ export default function App() {
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
 
+  const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -109,6 +111,7 @@ export default function App() {
   const isMicPreparingRef = useRef(isMicPreparing);
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
+  const vadReprocessIdRef = useRef(0);
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -131,6 +134,10 @@ export default function App() {
   useEffect(() => {
     currentFrameRef.current = currentFrame;
   }, [currentFrame]);
+
+  useEffect(() => {
+    tracksRef.current = tracks;
+  }, [tracks]);
 
   useEffect(() => {
     recordingStateRef.current = recordingState;
@@ -158,16 +165,82 @@ export default function App() {
     };
   }, []);
 
+  const createEmptyFrames = useCallback((audioBuffer: AudioBuffer | null): FrameData[] => {
+    if (!audioBuffer) return [];
+    const totalFrames = Math.floor((audioBuffer.length * FPS) / audioBuffer.sampleRate);
+    const frames: FrameData[] = [];
+    for (let i = 0; i < totalFrames; i++) {
+      frames.push({
+        frameIndex: i,
+        time: i / FPS,
+        volume: 0,
+        isSpeech: false,
+      });
+    }
+    return frames;
+  }, []);
+
+  const scheduleVadAnalysis = useCallback((trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning) => {
+    const bufferRef = audioBuffer;
+    const tuningToken = vadReprocessIdRef.current;
+    void analyzeAudioBufferWithVadEngine(bufferRef, FPS, tuning)
+      .then((frames) => {
+        if (vadReprocessIdRef.current !== tuningToken) return;
+        setTracks((prev) =>
+          prev.map((track) =>
+            track.id === trackId && track.audioBuffer === bufferRef ? { ...track, frames } : track
+          )
+        );
+      })
+      .catch((error) => {
+        console.warn('VAD解析に失敗しました。', error);
+      });
+  }, []);
+
   // Re-process when VAD settings change
   useEffect(() => {
     // VAD設定は非破壊の表示変更なので、履歴は別ロジックで管理する。
     // ここでは派生 frames の再生成のみを行う。
     const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-    setTracks((prevTracks) =>
-      prevTracks.map((track) =>
-        track.audioBuffer ? { ...track, frames: analyzeAudioBufferWithVad(track.audioBuffer, FPS, tuning) } : { ...track, frames: [] }
-      )
-    );
+    const requestId = vadReprocessIdRef.current + 1;
+    vadReprocessIdRef.current = requestId;
+    const snapshot = tracksRef.current;
+
+    const run = async () => {
+      const results = await Promise.all(
+        snapshot.map(async (track) => {
+          if (!track.audioBuffer) return null;
+          try {
+            const frames = await analyzeAudioBufferWithVadEngine(track.audioBuffer, FPS, tuning);
+            return { id: track.id, buffer: track.audioBuffer, frames };
+          } catch (error) {
+            console.warn('VAD解析に失敗しました。', error);
+            return null;
+          }
+        })
+      );
+
+      if (vadReprocessIdRef.current !== requestId) return;
+
+      const resultMap = new Map(
+        results
+          .filter((result): result is { id: string; buffer: AudioBuffer; frames: FrameData[] } => Boolean(result))
+          .map((result) => [result.id, result])
+      );
+
+      setTracks((prevTracks) =>
+        prevTracks.map((track) => {
+          if (!track.audioBuffer) return { ...track, frames: [] };
+          const match = resultMap.get(track.id);
+          if (match && match.buffer === track.audioBuffer) {
+            return { ...track, frames: match.frames };
+          }
+          return track;
+        })
+      );
+    };
+
+    void run();
   }, [vadPreset, vadStability, vadThresholdScale]);
 
   // --- History Management ---
@@ -234,20 +307,31 @@ export default function App() {
 
     setHistoryFuture(prev => [futureEntry, ...prev]);
     if (previous.kind === 'tracks') {
-      setTracks(
-        previous.tracks.map((t) =>
-          t.audioBuffer
-            ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
-            : { ...t, frames: [] }
-        )
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const nextTracks = previous.tracks.map((track) =>
+        track.audioBuffer ? { ...track, frames: createEmptyFrames(track.audioBuffer) } : { ...track, frames: [] }
       );
+      setTracks(nextTracks);
       // Reset selection to avoid ghost selections
       setSelection(null);
+      nextTracks.forEach((track) => {
+        if (track.audioBuffer) {
+          scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
+        }
+      });
     } else {
       setVadThresholdScale(previous.value);
     }
     setHistoryPast(newPast);
-  }, [historyPast, tracks, vadPreset, vadStability, vadThresholdScale]);
+  }, [
+    createEmptyFrames,
+    historyPast,
+    scheduleVadAnalysis,
+    tracks,
+    vadPreset,
+    vadStability,
+    vadThresholdScale,
+  ]);
 
   const handleRedo = useCallback(() => {
     if (historyFuture.length === 0) return;
@@ -262,19 +346,30 @@ export default function App() {
 
     setHistoryPast(prev => [...prev, pastEntry]);
     if (next.kind === 'tracks') {
-      setTracks(
-        next.tracks.map((t) =>
-          t.audioBuffer
-            ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
-            : { ...t, frames: [] }
-        )
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const nextTracks = next.tracks.map((track) =>
+        track.audioBuffer ? { ...track, frames: createEmptyFrames(track.audioBuffer) } : { ...track, frames: [] }
       );
+      setTracks(nextTracks);
       setSelection(null);
+      nextTracks.forEach((track) => {
+        if (track.audioBuffer) {
+          scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
+        }
+      });
     } else {
       setVadThresholdScale(next.value);
     }
     setHistoryFuture(newFuture);
-  }, [historyFuture, tracks, vadPreset, vadStability, vadThresholdScale]);
+  }, [
+    createEmptyFrames,
+    historyFuture,
+    scheduleVadAnalysis,
+    tracks,
+    vadPreset,
+    vadStability,
+    vadThresholdScale,
+  ]);
 
   const handleResetProject = () => {
     if (window.confirm("プロジェクトを初期化します。\n録音データも含め、現在の作業内容はすべて失われます。\nよろしいですか？")) {
@@ -705,12 +800,12 @@ export default function App() {
         }
       }
 
-      const newFrames = analyzeAudioBufferWithVad(finalBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale));
-      
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
-        frames: newFrames
+        frames: createEmptyFrames(finalBuffer),
       });
+      scheduleVadAnalysis(trackId, finalBuffer, tuning);
 
       setRecordingState(RecordingState.IDLE);
       // Do not reset current frame to 0, let user stay where they are or seek manually
@@ -771,6 +866,9 @@ export default function App() {
         byTrackId: {},
       };
 
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
 
@@ -782,14 +880,16 @@ export default function App() {
         if (!track.audioBuffer) return track;
 
         const { newBuffer } = cutAudioRangeWithSilence(track.audioBuffer, range.startFrame, range.endFrame, FPS);
+        pendingVad.push({ id: track.id, buffer: newBuffer });
         return {
           ...track,
           audioBuffer: newBuffer,
-          frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)),
+          frames: createEmptyFrames(newBuffer),
         };
       });
 
       setTracks(nextTracks);
+      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setClipboardClip(nextClipboard);
       setSelection(null);
     } catch (error) {
@@ -809,14 +909,19 @@ export default function App() {
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
 
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id) || !track.audioBuffer) return track;
 
         const newBuffer = deleteAudioRangeRipple(track.audioBuffer, range.startFrame, range.endFrame, FPS);
-        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
+        pendingVad.push({ id: track.id, buffer: newBuffer });
+        return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
       });
 
       setTracks(nextTracks);
+      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setSelection(null);
       setCurrentFrame(range.startFrame);
     } catch (error) {
@@ -831,6 +936,7 @@ export default function App() {
 
     try {
       saveToHistory();
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
@@ -844,13 +950,15 @@ export default function App() {
           return;
         }
 
-        setTracks(
-          tracks.map((track) => {
-            const clip = clipboardClip.byTrackId[track.id];
-            const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
-          })
-        );
+        const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+        const nextTracks = tracks.map((track) => {
+          const clip = clipboardClip.byTrackId[track.id];
+          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          pendingVad.push({ id: track.id, buffer: newBuffer });
+          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        });
+        setTracks(nextTracks);
+        pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
@@ -858,13 +966,16 @@ export default function App() {
           return;
         }
 
-        setTracks(
-          tracks.map((track) => {
-            if (track.id !== editTarget) return track;
-            const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
-          })
-        );
+        const nextTracks = tracks.map((track) => {
+          if (track.id !== editTarget) return track;
+          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        });
+        setTracks(nextTracks);
+        const updatedTrack = nextTracks.find((track) => track.id === editTarget);
+        if (updatedTrack?.audioBuffer) {
+          scheduleVadAnalysis(editTarget, updatedTrack.audioBuffer, tuning);
+        }
       }
 
       setSelection(null);
@@ -880,6 +991,7 @@ export default function App() {
 
     try {
       saveToHistory();
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
@@ -893,13 +1005,15 @@ export default function App() {
           return;
         }
 
-        setTracks(
-          tracks.map((track) => {
-            const clip = clipboardClip.byTrackId[track.id];
-            const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
-          })
-        );
+        const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+        const nextTracks = tracks.map((track) => {
+          const clip = clipboardClip.byTrackId[track.id];
+          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          pendingVad.push({ id: track.id, buffer: newBuffer });
+          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        });
+        setTracks(nextTracks);
+        pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
@@ -907,13 +1021,16 @@ export default function App() {
           return;
         }
 
-        setTracks(
-          tracks.map((track) => {
-            if (track.id !== editTarget) return track;
-            const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-            return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
-          })
-        );
+        const nextTracks = tracks.map((track) => {
+          if (track.id !== editTarget) return track;
+          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        });
+        setTracks(nextTracks);
+        const updatedTrack = nextTracks.find((track) => track.id === editTarget);
+        if (updatedTrack?.audioBuffer) {
+          scheduleVadAnalysis(editTarget, updatedTrack.audioBuffer, tuning);
+        }
       }
 
       setSelection(null);
@@ -933,16 +1050,21 @@ export default function App() {
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
 
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
         const newBuffer = insertSilenceFramesAtFrame(track.audioBuffer, currentFrame, 1, FPS, {
           sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
-        return { ...track, audioBuffer: newBuffer, frames: analyzeAudioBufferWithVad(newBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) };
+        pendingVad.push({ id: track.id, buffer: newBuffer });
+        return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
       });
 
       setTracks(nextTracks);
+      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setCurrentFrame((prev) => prev + 1);
     } catch (error) {
       console.error('Insert 1f failed:', error);
