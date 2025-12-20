@@ -15,6 +15,7 @@ import {
   getSileroVadStatus,
   subscribeSileroVadStatus,
 } from './services/sileroVadEngine';
+import type { SileroVadStatus } from './services/sileroVadEngine';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { computeVadAutoTuning } from './services/vadAutoTuner';
 import { TimesheetViewport } from './components/TimesheetViewport';
@@ -105,7 +106,7 @@ export default function App() {
   const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   const [sheetZoom, setSheetZoom] = useState(1);
-  const [isSileroActive, setIsSileroActive] = useState(() => getSileroVadStatus() === 'silero');
+  const [vadEngineStatus, setVadEngineStatus] = useState<SileroVadStatus>(() => getSileroVadStatus());
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
@@ -171,7 +172,7 @@ export default function App() {
 
   useEffect(() => {
     return subscribeSileroVadStatus((status) => {
-      setIsSileroActive(status === 'silero');
+      setVadEngineStatus(status);
     });
   }, []);
 
@@ -1513,7 +1514,7 @@ export default function App() {
         vadStability={vadStability}
         vadThresholdScale={vadThresholdScale}
         isVadAuto={isVadAuto}
-        isSileroActive={isSileroActive}
+        vadEngineStatus={vadEngineStatus}
         inputRms={inputRms}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
