@@ -115,6 +115,37 @@ const getSupportedMimeType = (): string | undefined => {
   return undefined;
 };
 
+type WindowWithWebkitAudioContext = Window & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
+const getAudioContextClass = (): typeof AudioContext => {
+  const audioContextClass = window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
+  if (!audioContextClass) {
+    throw new Error('AudioContext is not supported');
+  }
+  return audioContextClass;
+};
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return '';
+};
+
+const getErrorName = (error: unknown): string => {
+  if (error instanceof Error && error.name) return error.name;
+  if (error && typeof error === 'object' && 'name' in error) {
+    const name = (error as { name?: unknown }).name;
+    if (typeof name === 'string') return name;
+  }
+  return '';
+};
+
 export default function App() {
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
   
@@ -557,8 +588,9 @@ export default function App() {
   const handleExportAudio = async () => {
     try {
         await exportTracksToZip(tracks);
-    } catch (error: any) {
-        alert(error.message || "音声のエクスポートに失敗しました。");
+    } catch (error: unknown) {
+        const message = getErrorMessage(error) || "音声のエクスポートに失敗しました。";
+        alert(message);
         console.error(error);
     }
   };
@@ -567,8 +599,9 @@ export default function App() {
     try {
       const sheetIndex = Math.max(0, Math.floor(viewportFirstColumn / 2));
       await exportSheetImagesToZip(tracks, FPS, { type: 'sheet', sheetIndex });
-    } catch (error: any) {
-      alert(error.message || 'シート画像のエクスポートに失敗しました。');
+    } catch (error: unknown) {
+      const message = getErrorMessage(error) || 'シート画像のエクスポートに失敗しました。';
+      alert(message);
       console.error(error);
     }
   };
@@ -576,8 +609,9 @@ export default function App() {
   const handleExportSheetImagesAll = async () => {
     try {
       await exportSheetImagesToZip(tracks, FPS, { type: 'all' });
-    } catch (error: any) {
-      alert(error.message || 'シート画像のエクスポートに失敗しました。');
+    } catch (error: unknown) {
+      const message = getErrorMessage(error) || 'シート画像のエクスポートに失敗しました。';
+      alert(message);
       console.error(error);
     }
   };
@@ -662,7 +696,8 @@ export default function App() {
     }
 
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = getAudioContextClass();
+      audioContextRef.current = new AudioContextClass();
     }
 
     const ctx = audioContextRef.current;
@@ -702,7 +737,8 @@ export default function App() {
   // Helper to start playback (used by both Play button and Recording start)
   const startPlayback = (startFrame: number, mode: RecordingState) => {
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextClass = getAudioContextClass();
+        audioContextRef.current = new AudioContextClass();
     }
     
     const ctx = audioContextRef.current;
@@ -784,7 +820,8 @@ export default function App() {
     stopVuMeter();
 
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = getAudioContextClass();
+      audioContextRef.current = new AudioContextClass();
     }
     const ctx = audioContextRef.current;
 
@@ -815,7 +852,8 @@ export default function App() {
   const startRecordingWithStream = async (stream: MediaStream) => {
     // Ensure context is running first for better sync
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = getAudioContextClass();
+      audioContextRef.current = new AudioContextClass();
     }
     if (audioContextRef.current.state === 'suspended') {
       await audioContextRef.current.resume();
@@ -908,14 +946,16 @@ export default function App() {
       const stream = await ensureMicReady();
       if (!pendingRecordStartRef.current) return;
       await startRecordingWithStream(stream);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error accessing microphone:", err);
-      
-      if (err.name === 'NotFoundError' || err.message?.includes('device not found')) {
+
+      const errorName = getErrorName(err);
+      const errorMessage = getErrorMessage(err);
+      if (errorName === 'NotFoundError' || errorMessage.includes('device not found')) {
         alert("マイクが見つかりませんでした。マイクが接続されていることを確認してください。");
-      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      } else if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
         alert("マイクの使用が許可されていません。ブラウザの設定を確認してください。");
-      } else if (err.name === 'NotReadableError') {
+      } else if (errorName === 'NotReadableError') {
         alert("マイクにアクセスできません。他のアプリが使用中の可能性があります。");
       } else {
         alert("録音の開始に失敗しました。");
@@ -940,7 +980,8 @@ export default function App() {
       saveToHistory(); // Save before loading new audio
 
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+         const AudioContextClass = getAudioContextClass();
+         audioContextRef.current = new AudioContextClass();
       }
 
       // 1. Decode new recording
@@ -982,10 +1023,11 @@ export default function App() {
       // Do not reset current frame to 0, let user stay where they are or seek manually
       // setCurrentFrame(0); 
       setSelection(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Error loading audio blob:", e);
       // More user friendly error
-      if (e.message?.includes('Decode error')) {
+      const message = getErrorMessage(e);
+      if (message.includes('Decode error')) {
          alert("音声データのデコードに失敗しました。録音が短すぎるか、ブラウザが対応していない形式の可能性があります。");
       } else {
          alert("音声ファイルの読み込みに失敗しました。");
