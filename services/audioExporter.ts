@@ -8,7 +8,6 @@ import { Track } from '../types';
 const audioBufferToWav = (buffer: AudioBuffer, targetLength?: number): Blob => {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
-  const format = 1; // PCM
   const bitDepth = 16;
 
   const channelLength = targetLength && targetLength > buffer.length ? targetLength : buffer.length;
