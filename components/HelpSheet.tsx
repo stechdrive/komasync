@@ -50,13 +50,22 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
+              <div className="text-xs text-gray-500">ズーム</div>
+              <ul className="list-disc ml-4 space-y-1">
+                <li>スマホはピンチ操作でシートを拡大できます。</li>
+                <li>PCは上部バーのズームイン/全体表示ボタンで調整します。</li>
+                <li>全体表示は100%の基準表示です。</li>
+              </ul>
+            </section>
+
+            <section className="space-y-2">
               <div className="text-xs text-gray-500">再生と録音</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>再生ボタンで現在位置から再生します。</li>
                 <li>録音ボタンで録音開始、停止で終了します。</li>
                 <li>準備中…表示の後に録音が開始します。</li>
                 <li>録音トラックはタイムシート上のセルをタップして選択します。</li>
-                <li>下部の「閾値」スライダーで音声検出の感度を調整します。</li>
+                <li>「その他」→「セリフ検出」で自動調整や感度/途切れにくさ/環境を調整できます。</li>
                 <li>「その他」から録音中の再生ON/OFFを切り替えられます。</li>
               </ul>
             </section>
@@ -77,6 +86,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <ul className="list-disc ml-4 space-y-1">
                 <li>「その他」から音声ファイルをトラックへ読み込めます。</li>
                 <li>トラック別WAVのZIPや、シート画像を書き出せます。</li>
+                <li>WAVは最長トラックに合わせて無音が入ります。</li>
               </ul>
             </section>
 
