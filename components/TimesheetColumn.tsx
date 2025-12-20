@@ -210,7 +210,6 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
 
               {/* トラック */}
               {tracks.map((track) => {
-                const frameData = track.frames[globalFrameIndex];
                 const isSpeech = getEffectiveSpeech(track, globalFrameIndex);
                 const isTargetTrack = editTarget === 'all' || editTarget === track.id;
                 const isActiveTrack = activeTrackId === track.id;

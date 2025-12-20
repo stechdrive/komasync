@@ -286,20 +286,6 @@ export default function App() {
     setVadStability(autoTuning.stability);
   }, [isVadAuto, tracks]);
 
-  // Initialize Audio Context Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopScrubSources();
-      stopAllSources();
-      stopVuMeter();
-      stopMicStream();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, []);
-
   const createEmptyFrames = useCallback((audioBuffer: AudioBuffer | null): FrameData[] => {
     if (!audioBuffer) return [];
     const totalFrames = Math.floor((audioBuffer.length * FPS) / audioBuffer.sampleRate);
@@ -505,6 +491,7 @@ export default function App() {
     setHistoryPast(newPast);
   }, [
     createEmptyFrames,
+    getFrameCountFromBuffer,
     historyPast,
     scheduleVadAnalysis,
     tracks,
@@ -549,6 +536,7 @@ export default function App() {
     setHistoryFuture(newFuture);
   }, [
     createEmptyFrames,
+    getFrameCountFromBuffer,
     historyFuture,
     scheduleVadAnalysis,
     tracks,
@@ -658,12 +646,21 @@ export default function App() {
     );
   };
 
-  const stopPlaybackLoop = () => {
+  const stopAllSources = useCallback(() => {
+    sourceNodesRef.current.forEach(({ source, gain }) => {
+      try { source.stop(); } catch {}
+      try { source.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    });
+    sourceNodesRef.current.clear();
+  }, []);
+
+  const stopPlaybackLoop = useCallback(() => {
     stopAllSources();
     cancelAnimationFrame(animationFrameRef.current);
-  };
+  }, [stopAllSources]);
 
-  const stopScrubSources = () => {
+  const stopScrubSources = useCallback(() => {
     scrubNodesRef.current.forEach(({ source, gain }) => {
       try {
         source.stop();
@@ -682,9 +679,9 @@ export default function App() {
       }
     });
     scrubNodesRef.current = [];
-  };
+  }, []);
 
-  const playScrubPreview = (frame: number) => {
+  const playScrubPreview = useCallback((frame: number) => {
     const now = performance.now();
     if (now - scrubLastTimeRef.current < SCRUB_THROTTLE_MS) return;
     scrubLastTimeRef.current = now;
@@ -732,7 +729,7 @@ export default function App() {
       source.start(0, offset, duration);
       scrubNodesRef.current.push({ source, gain });
     });
-  };
+  }, [stopScrubSources, tracks]);
 
   // Helper to start playback (used by both Play button and Recording start)
   const startPlayback = (startFrame: number, mode: RecordingState) => {
@@ -801,7 +798,7 @@ export default function App() {
     animationFrameRef.current = requestAnimationFrame(updateFrame);
   };
 
-  const stopVuMeter = () => {
+  const stopVuMeter = useCallback(() => {
     if (vuAnimationFrameRef.current) {
       cancelAnimationFrame(vuAnimationFrameRef.current);
       vuAnimationFrameRef.current = 0;
@@ -814,7 +811,7 @@ export default function App() {
     vuSourceRef.current = null;
     vuAnalyserRef.current = null;
     setInputRms(0);
-  };
+  }, []);
 
   const startVuMeter = (stream: MediaStream) => {
     stopVuMeter();
@@ -1049,19 +1046,19 @@ export default function App() {
 
   // --- Audio Editing ---
 
-  const getProjectSampleRate = (): number => {
+  const getProjectSampleRate = useCallback((): number => {
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') return audioContextRef.current.sampleRate;
     return tracks.find((t) => t.audioBuffer)?.audioBuffer?.sampleRate ?? 48000;
-  };
+  }, [tracks]);
 
-  const getNormalizedSelection = (): { startFrame: number; endFrame: number } | null => {
+  const getNormalizedSelection = useCallback((): { startFrame: number; endFrame: number } | null => {
     if (!selection) return null;
     const startFrame = Math.max(0, Math.floor(Math.min(selection.startFrame, selection.endFrame)));
     const endFrame = Math.max(startFrame, Math.floor(Math.max(selection.startFrame, selection.endFrame)));
     return { startFrame, endFrame };
-  };
+  }, [selection]);
 
-  const handleCut = async () => {
+  const handleCut = useCallback(async () => {
     const range = getNormalizedSelection();
     if (!range) return;
 
@@ -1123,7 +1120,20 @@ export default function App() {
       console.error('Cut failed:', error);
       alert('切り取り操作に失敗しました。');
     }
-  };
+  }, [
+    createEmptyFrames,
+    editTarget,
+    getNormalizedSelection,
+    getProjectSampleRate,
+    handlePause,
+    recordingState,
+    saveToHistory,
+    scheduleVadAnalysis,
+    tracks,
+    vadPreset,
+    vadStability,
+    vadThresholdScale,
+  ]);
 
   const handleDeleteSelection = async () => {
     const range = getNormalizedSelection();
@@ -1164,7 +1174,7 @@ export default function App() {
     }
   };
 
-  const handlePasteInsert = async () => {
+  const handlePasteInsert = useCallback(async () => {
     if (!clipboardClip) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
 
@@ -1241,9 +1251,23 @@ export default function App() {
       console.error('Paste insert failed:', error);
       alert('貼り付け（挿入）に失敗しました。');
     }
-  };
+  }, [
+    clipboardClip,
+    createEmptyFrames,
+    currentFrame,
+    editTarget,
+    getFrameCountFromBuffer,
+    handlePause,
+    recordingState,
+    saveToHistory,
+    scheduleVadAnalysis,
+    tracks,
+    vadPreset,
+    vadStability,
+    vadThresholdScale,
+  ]);
 
-  const handlePasteOverwrite = async () => {
+  const handlePasteOverwrite = useCallback(async () => {
     if (!clipboardClip) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
 
@@ -1320,7 +1344,21 @@ export default function App() {
       console.error('Paste overwrite failed:', error);
       alert('貼り付け（上書き）に失敗しました。');
     }
-  };
+  }, [
+    clipboardClip,
+    createEmptyFrames,
+    currentFrame,
+    editTarget,
+    getFrameCountFromBuffer,
+    handlePause,
+    recordingState,
+    saveToHistory,
+    scheduleVadAnalysis,
+    tracks,
+    vadPreset,
+    vadStability,
+    vadThresholdScale,
+  ]);
 
   const handleInsertOneFrame = async () => {
     if (recordingState === RecordingState.PLAYING) handlePause();
@@ -1380,15 +1418,6 @@ export default function App() {
     startPlayback(startFrame, RecordingState.PLAYING);
   };
 
-  const stopAllSources = () => {
-    sourceNodesRef.current.forEach(({ source, gain }) => {
-      try { source.stop(); } catch {}
-      try { source.disconnect(); } catch {}
-      try { gain.disconnect(); } catch {}
-    });
-    sourceNodesRef.current.clear();
-  };
-
   const stopMicStream = useCallback(() => {
     const stream = micStreamRef.current;
     pendingRecordStartRef.current = false;
@@ -1399,6 +1428,20 @@ export default function App() {
     stream.getTracks().forEach((track) => track.stop());
     micStreamRef.current = null;
   }, []);
+
+  // Initialize Audio Context Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopScrubSources();
+      stopAllSources();
+      stopVuMeter();
+      stopMicStream();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [stopAllSources, stopMicStream, stopScrubSources, stopVuMeter]);
 
   const isStreamLive = (stream: MediaStream | null): boolean =>
     Boolean(stream && stream.getTracks().some((track) => track.readyState === 'live'));
@@ -1478,10 +1521,10 @@ export default function App() {
     return () => window.clearInterval(intervalId);
   }, [isMicReady, stopMicStream]);
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
     stopPlaybackLoop();
     setRecordingState(RecordingState.PAUSED);
-  };
+  }, [stopPlaybackLoop]);
 
   const handleFrameTap = (frame: number) => {
     const nextFrame = Math.max(0, Math.floor(frame));
