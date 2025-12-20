@@ -8,6 +8,7 @@ type EditPaletteProps = {
   onCut: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
+  onClose: () => void;
   onMarkSpeech: () => void;
   onMarkNonSpeech: () => void;
   onResetSpeechLabel: () => void;
@@ -22,6 +23,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   onCut,
   onDelete,
   onClearSelection,
+  onClose,
   onMarkSpeech,
   onMarkNonSpeech,
   onResetSpeechLabel,
@@ -63,6 +65,14 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
               <div className="text-[var(--ui-xs)] text-blue-700 font-bold">{selectionCount}コマ選択中</div>
               <div className="flex items-center gap-2">
                 <div className="text-[var(--ui-xs)] text-blue-600">{targetLabel}</div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="min-h-[var(--control-size)] px-2 text-[var(--ui-xs)] text-blue-600 hover:text-blue-800 flex items-center rounded-md"
+                  title="閉じる"
+                >
+                  閉じる
+                </button>
                 <button
                   type="button"
                   onClick={onClearSelection}

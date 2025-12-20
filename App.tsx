@@ -609,6 +609,7 @@ export default function App() {
   };
 
   const handleOpenClipboardMenu = useCallback((point: { x: number; y: number }) => {
+    setSelectionMenu(null);
     setClipboardMenu(point);
   }, []);
 
@@ -1558,13 +1559,10 @@ export default function App() {
     setSelectionMenu(null);
   };
 
-  const handleSelectionEnd = useCallback(
-    (range: SelectionRange | null, point: { x: number; y: number }) => {
-      if (!range) return;
-      setSelectionMenu(point);
-    },
-    []
-  );
+  const handleOpenSelectionMenu = useCallback((point: { x: number; y: number }) => {
+    setClipboardMenu(null);
+    setSelectionMenu(point);
+  }, []);
 
   const applySpeechOverrideToSelection = useCallback(
     (value: number) => {
@@ -1794,8 +1792,8 @@ export default function App() {
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
         onOpenContextMenu={handleOpenClipboardMenu}
+        onOpenSelectionMenu={handleOpenSelectionMenu}
         onSelectionChange={handleSelectionChange}
-        onSelectionEnd={handleSelectionEnd}
         onTrackSelect={handleTrackSelect}
         onScrubStart={handleScrubStart}
         onScrubMove={handleScrubMove}
@@ -1804,14 +1802,15 @@ export default function App() {
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
-      <EditPalette
-        selectionCount={selectionCount}
-        targetLabel={targetLabel}
-        anchor={selectionMenu}
-        onCut={() => {
-          setSelectionMenu(null);
-          void handleCut();
-        }}
+        <EditPalette
+          selectionCount={selectionCount}
+          targetLabel={targetLabel}
+          anchor={selectionMenu}
+          onClose={() => setSelectionMenu(null)}
+          onCut={() => {
+            setSelectionMenu(null);
+            void handleCut();
+          }}
         onDelete={() => {
           setSelectionMenu(null);
           void handleDeleteSelection();
