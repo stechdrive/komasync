@@ -32,6 +32,7 @@ export interface Track {
   color: string;     // Tailwind color class prefix (e.g. 'blue', 'red')
   audioBuffer: AudioBuffer | null;
   frames: FrameData[];
+  speechOverrides: number[];
   isVisible: boolean;
   isMuted: boolean;
 }

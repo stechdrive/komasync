@@ -4,6 +4,7 @@ import { getFramesPerColumn, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { formatTimecodeOneBased } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
 import { EditTarget, SelectionRange } from '@/domain/editTypes';
+import { getEffectiveSpeech } from '@/services/speechLabels';
 
 type TimesheetColumnProps = {
   columnIndex: number;
@@ -210,7 +211,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
               {/* トラック */}
               {tracks.map((track) => {
                 const frameData = track.frames[globalFrameIndex];
-                const isSpeech = Boolean(frameData?.isSpeech);
+                const isSpeech = getEffectiveSpeech(track, globalFrameIndex);
                 const isTargetTrack = editTarget === 'all' || editTarget === track.id;
                 const isActiveTrack = activeTrackId === track.id;
                 const theme = getTrackTheme(track.id);
