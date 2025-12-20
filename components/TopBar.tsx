@@ -77,8 +77,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <div className="safe-area-top h-full bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="h-full px-3 py-1 sm:py-2 flex flex-wrap items-center gap-1 sm:flex-nowrap sm:gap-3">
+    <div className="safe-area-top topbar-compact h-full bg-indigo-600 text-white border-b border-indigo-700/40">
+      <div className="h-full px-2 sm:px-3 py-1 sm:py-2 flex flex-wrap items-center gap-1 sm:flex-nowrap sm:gap-3">
         <div className="flex items-center gap-2 min-w-0 flex-1 w-full sm:flex-none sm:w-auto">
           <button
             type="button"
@@ -111,8 +111,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0 w-full justify-end sm:w-auto">
-          <div className="hidden sm:flex items-center gap-1 mr-1">
+        <div className="flex flex-nowrap items-center gap-0.5 sm:gap-1 shrink-0 w-full justify-end sm:w-auto">
+          <div className="flex items-center gap-0.5 sm:gap-1 mr-0.5 sm:mr-1">
             <button
               type="button"
               onClick={onZoomOut}
