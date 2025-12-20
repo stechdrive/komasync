@@ -660,6 +660,11 @@ export default function App() {
     cancelAnimationFrame(animationFrameRef.current);
   }, [stopAllSources]);
 
+  const handlePause = useCallback(() => {
+    stopPlaybackLoop();
+    setRecordingState(RecordingState.PAUSED);
+  }, [stopPlaybackLoop]);
+
   const stopScrubSources = useCallback(() => {
     scrubNodesRef.current.forEach(({ source, gain }) => {
       try {
@@ -1520,11 +1525,6 @@ export default function App() {
 
     return () => window.clearInterval(intervalId);
   }, [isMicReady, stopMicStream]);
-
-  const handlePause = useCallback(() => {
-    stopPlaybackLoop();
-    setRecordingState(RecordingState.PAUSED);
-  }, [stopPlaybackLoop]);
 
   const handleFrameTap = (frame: number) => {
     const nextFrame = Math.max(0, Math.floor(frame));
