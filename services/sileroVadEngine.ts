@@ -17,12 +17,15 @@ type VadWorkerResponse = {
 };
 
 export type SileroVadStatus = 'idle' | 'silero' | 'fallback';
+export type SileroVadError = string | null;
 
 let worker: Worker | null = null;
 let workerFailed = false;
 let requestId = 0;
 let vadStatus: SileroVadStatus = 'idle';
+let vadError: SileroVadError = null;
 const statusListeners = new Set<(status: SileroVadStatus) => void>();
+const errorListeners = new Set<(error: SileroVadError) => void>();
 
 const pending = new Map<
   number,
@@ -35,11 +38,24 @@ const setVadStatus = (nextStatus: SileroVadStatus) => {
   statusListeners.forEach((listener) => listener(vadStatus));
 };
 
+const setVadError = (nextError: SileroVadError) => {
+  if (vadError === nextError) return;
+  vadError = nextError;
+  errorListeners.forEach((listener) => listener(vadError));
+};
+
 export const getSileroVadStatus = (): SileroVadStatus => vadStatus;
 
 export const subscribeSileroVadStatus = (listener: (status: SileroVadStatus) => void): (() => void) => {
   statusListeners.add(listener);
   return () => statusListeners.delete(listener);
+};
+
+export const getSileroVadError = (): SileroVadError => vadError;
+
+export const subscribeSileroVadError = (listener: (error: SileroVadError) => void): (() => void) => {
+  errorListeners.add(listener);
+  return () => errorListeners.delete(listener);
 };
 
 const resolveBaseUrl = (): string => {
@@ -58,6 +74,7 @@ const failWorker = (error: Error) => {
     worker = null;
   }
   setVadStatus('fallback');
+  setVadError(error.message);
   pending.forEach(({ reject }) => reject(error));
   pending.clear();
 };
@@ -133,6 +150,7 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
     });
 
     setVadStatus('silero');
+    setVadError(null);
     return frames;
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));

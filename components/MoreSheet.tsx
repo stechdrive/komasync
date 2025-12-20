@@ -3,7 +3,7 @@ import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
 import { Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
 import { getVadTuning, VadPreset } from '@/services/vad';
-import type { SileroVadStatus } from '@/services/sileroVadEngine';
+import type { SileroVadError, SileroVadStatus } from '@/services/sileroVadEngine';
 
 type MoreSheetProps = {
   isOpen: boolean;
@@ -14,6 +14,7 @@ type MoreSheetProps = {
   vadThresholdScale: number;
   isVadAuto: boolean;
   vadEngineStatus: SileroVadStatus;
+  vadEngineError: SileroVadError;
   inputRms: number;
   playWhileRecording: boolean;
   onClose: () => void;
@@ -29,6 +30,44 @@ type MoreSheetProps = {
   onTogglePlayWhileRecording: () => void;
 };
 
+// onnxruntime-web と同じ判定用バイト列で WASM 機能を確認する。
+const isSimdSupported = (): boolean => {
+  if (typeof WebAssembly === 'undefined' || typeof WebAssembly.validate !== 'function') return false;
+  try {
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 30, 1, 28, 0, 65, 0, 253, 15, 253,
+        12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 186, 1, 26, 11,
+      ])
+    );
+  } catch {
+    return false;
+  }
+};
+
+// onnxruntime-web と同じ判定用バイト列でスレッド対応を確認する。
+const isThreadSupported = (): boolean => {
+  if (typeof SharedArrayBuffer === 'undefined') return false;
+  try {
+    if (typeof MessageChannel !== 'undefined') {
+      new MessageChannel().port1.postMessage(new SharedArrayBuffer(1));
+    }
+  } catch {
+    return false;
+  }
+  if (typeof WebAssembly === 'undefined' || typeof WebAssembly.validate !== 'function') return false;
+  try {
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 5, 4, 1, 3, 1, 1, 10, 11, 1, 9, 0, 65,
+        0, 254, 16, 2, 0, 26, 11,
+      ])
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const MoreSheet: React.FC<MoreSheetProps> = ({
   isOpen,
   tracks,
@@ -38,6 +77,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   vadThresholdScale,
   isVadAuto,
   vadEngineStatus,
+  vadEngineError,
   inputRms,
   playWhileRecording,
   onClose,
@@ -72,6 +112,8 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   const isSecureContext = typeof window !== 'undefined' && window.isSecureContext;
   const isCrossOriginIsolated = typeof window !== 'undefined' && window.crossOriginIsolated;
   const hasSharedArrayBuffer = typeof window !== 'undefined' && 'SharedArrayBuffer' in window;
+  const supportsSimd = isSimdSupported();
+  const supportsThreads = isThreadSupported();
   const serviceWorkerControlled =
     typeof navigator !== 'undefined' && 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
   const diagValueClass = (value: boolean): string => (value ? 'text-blue-600' : 'text-gray-500');
@@ -206,10 +248,17 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                         <span className={diagValueClass(hasSharedArrayBuffer)}>
                           SAB:{hasSharedArrayBuffer ? 'OK' : 'NG'}
                         </span>
+                        <span className={diagValueClass(supportsSimd)}>SIMD:{supportsSimd ? 'OK' : 'NG'}</span>
+                        <span className={diagValueClass(supportsThreads)}>Threads:{supportsThreads ? 'OK' : 'NG'}</span>
                         <span className={diagValueClass(serviceWorkerControlled)}>
                           SW:{serviceWorkerControlled ? 'OK' : 'NG'}
                         </span>
                       </div>
+                      {vadEngineError && (
+                        <div className="text-[11px] text-gray-500">
+                          VADエラー: <span className="font-mono text-rose-600 break-all">{vadEngineError}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-xs text-gray-600">
