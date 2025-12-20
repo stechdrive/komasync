@@ -18,6 +18,7 @@ type TimesheetColumnProps = {
   columnHeight: number;
   rulerWidth: number;
   rowHeight: number;
+  touchAction: React.CSSProperties['touchAction'];
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -66,6 +67,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   columnHeight,
   rulerWidth,
   rowHeight,
+  touchAction,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
   const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
@@ -123,7 +125,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="left"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
-                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'none' }}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction }}
               >
                 {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
@@ -158,11 +160,11 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     data-track-id={track.id}
                     className={`relative ${cellCursor} ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
-                      touchAction: 'none',
                       ...(highlightBorder
                         ? { boxShadow: `inset 2px 0 0 ${highlightBorder}, inset -2px 0 0 ${highlightBorder}` }
                         : {}),
                       ...(highlightBg ? { backgroundColor: highlightBg } : {}),
+                      touchAction,
                     }}
                   >
                     {isEndBoundary && (
@@ -183,7 +185,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="right"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'none' }}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction }}
               >
                 {isCurrent
                   ? formatTimecodeOneBased(globalFrameIndex, fps)

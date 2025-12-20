@@ -41,7 +41,7 @@ body {
 
 @media (max-width: 480px) {
   :root {
-    --topbar-h: calc(var(--control-size) * 2 + 1.5rem + env(safe-area-inset-top));
+    --topbar-h: calc(var(--control-size) * 2 + 1rem + env(safe-area-inset-top));
   }
 }
 

@@ -92,6 +92,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
+  }, []);
+  const touchActionValue: React.CSSProperties['touchAction'] = isIOS ? 'pan-x pan-y' : 'none';
 
   useEffect(() => {
     selectionRangeRef.current = selection;
@@ -313,6 +319,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const startPan = (e: React.PointerEvent) => {
+    if (isIOS) return;
     const el = scrollRef.current;
     if (!el) return;
     isPanningRef.current = true;
@@ -331,6 +338,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const updatePan = (e: React.PointerEvent) => {
+    if (isIOS) return;
     if (!isPanningRef.current || panPointerIdRef.current !== e.pointerId) return;
     const el = scrollRef.current;
     const start = panStartRef.current;
@@ -343,6 +351,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const stopPan = () => {
+    if (isIOS) return;
     isPanningRef.current = false;
     panPointerIdRef.current = null;
     panStartRef.current = null;
@@ -381,7 +390,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const handlePointerDown = (e: React.PointerEvent) => {
     updatePointer(e);
     const scrollEl = scrollRef.current;
-    if (e.pointerType !== 'mouse' && scrollEl) {
+    if (!isIOS && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
       scrollEl.setPointerCapture(e.pointerId);
       panStartRef.current = {
         x: e.clientX,
@@ -529,11 +538,19 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         const dy = e.clientY - pending.y;
         const distance = Math.hypot(dx, dy);
         if (distance < 4) return;
-        if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
+      if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
+        if (!isIOS) {
           startPan(e);
           updatePan(e);
-          return;
+        } else {
+          scrubPendingRef.current = null;
+          pendingTapRef.current = null;
+          selectionAnchorRef.current = null;
+          clearLongPressTimer();
+          longPressPointRef.current = null;
         }
+        return;
+      }
 
         isScrubbingRef.current = true;
         scrubPendingRef.current = null;
@@ -574,8 +591,15 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const dy = e.clientY - pendingTouch.y;
       if (Math.hypot(dx, dy) > 6) {
         if (Math.abs(dx) > Math.abs(dy)) {
-          startPan(e);
-          updatePan(e);
+          if (!isIOS) {
+            startPan(e);
+            updatePan(e);
+          } else {
+            pendingTapRef.current = null;
+            selectionAnchorRef.current = null;
+            clearLongPressTimer();
+            longPressPointRef.current = null;
+          }
           return;
         }
         isSelectingRef.current = true;
@@ -599,6 +623,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (
+      !isIOS &&
       e.pointerType !== 'mouse' &&
       !pendingTapRef.current &&
       !scrubPendingRef.current &&
@@ -638,7 +663,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const handlePointerUp = (e: React.PointerEvent) => {
     removePointer(e.pointerId);
     const scrollEl = scrollRef.current;
-    if (scrollEl?.hasPointerCapture(e.pointerId)) {
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) {
       scrollEl.releasePointerCapture(e.pointerId);
     }
     if (isPinchingRef.current) {
@@ -697,7 +722,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const handlePointerCancel = (e: React.PointerEvent) => {
     removePointer(e.pointerId);
     const scrollEl = scrollRef.current;
-    if (scrollEl?.hasPointerCapture(e.pointerId)) {
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) {
       scrollEl.releasePointerCapture(e.pointerId);
     }
     if (isPinchingRef.current) {
@@ -722,7 +747,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerCancel}
-        style={{ touchAction: 'none' }}
+        style={{ touchAction: touchActionValue }}
       >
         <div className="flex" style={{ width: `${totalColumns * columnWidth}px`, height: `${columnHeight}px` }}>
           {leftSpacerWidth > 0 && (
@@ -744,6 +769,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               columnHeight={columnHeight}
               rulerWidth={rulerWidth}
               rowHeight={rowHeight}
+              touchAction={touchActionValue}
             />
           ))}
 
