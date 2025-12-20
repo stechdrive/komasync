@@ -134,6 +134,7 @@ export default function App() {
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
   const vadReprocessIdRef = useRef(0);
+  const vadRequestIdRef = useRef<Map<string, number>>(new Map());
   const lastAutoTuneRef = useRef<Map<string, AudioBuffer | null>>(new Map());
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -249,13 +250,14 @@ export default function App() {
   const scheduleVadAnalysis = useCallback((trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning) => {
     const bufferRef = audioBuffer;
     const tuningToken = vadReprocessIdRef.current;
+    const requestId = (vadRequestIdRef.current.get(trackId) ?? 0) + 1;
+    vadRequestIdRef.current.set(trackId, requestId);
     void analyzeAudioBufferWithSileroVadEngine(bufferRef, FPS, tuning)
       .then((frames) => {
         if (vadReprocessIdRef.current !== tuningToken) return;
+        if (vadRequestIdRef.current.get(trackId) !== requestId) return;
         setTracks((prev) =>
-          prev.map((track) =>
-            track.id === trackId && track.audioBuffer === bufferRef ? { ...track, frames } : track
-          )
+          prev.map((track) => (track.id === trackId ? { ...track, frames } : track))
         );
       })
       .catch((error) => {
@@ -462,6 +464,8 @@ export default function App() {
         stopVuMeter();
         stopMicStream();
         cancelAnimationFrame(animationFrameRef.current);
+        vadReprocessIdRef.current += 1;
+        vadRequestIdRef.current.clear();
         
         // Reset all states
         setTracks(createInitialTracks());
