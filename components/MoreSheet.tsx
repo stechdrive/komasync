@@ -3,6 +3,7 @@ import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
 import { Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
 import { getVadTuning, VadPreset } from '@/services/vad';
+import type { SileroVadStatus } from '@/services/sileroVadEngine';
 
 type MoreSheetProps = {
   isOpen: boolean;
@@ -12,7 +13,7 @@ type MoreSheetProps = {
   vadStability: number;
   vadThresholdScale: number;
   isVadAuto: boolean;
-  isSileroActive: boolean;
+  vadEngineStatus: SileroVadStatus;
   inputRms: number;
   playWhileRecording: boolean;
   onClose: () => void;
@@ -36,7 +37,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   vadStability,
   vadThresholdScale,
   isVadAuto,
-  isSileroActive,
+  vadEngineStatus,
   inputRms,
   playWhileRecording,
   onClose,
@@ -58,7 +59,16 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const stabilityPercent = Math.round(vadStability * 100);
   const thresholdPercent = Math.round(vadThresholdScale * 100);
+  const isSileroActive = vadEngineStatus === 'silero';
   const thresholdValueClass = isSileroActive ? 'text-blue-600' : 'text-gray-600';
+  const vadEngineLabel =
+    vadEngineStatus === 'silero' ? 'Silero' : vadEngineStatus === 'fallback' ? 'Fallback' : '未判定';
+  const vadEngineClass =
+    vadEngineStatus === 'silero'
+      ? 'text-blue-600'
+      : vadEngineStatus === 'fallback'
+        ? 'text-gray-600'
+        : 'text-gray-400';
   const autoCaption = isVadAuto
     ? '6コマ以上の録音があると自動で最適化'
     : '手動で感度と途切れにくさを調整できます';
@@ -176,6 +186,9 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                         自動調整中は詳細設定を変更できません。
                       </div>
                     )}
+                    <div className="text-[11px] text-gray-500">
+                      開発用: VADエンジン <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
+                    </div>
 
                     <div className="text-xs text-gray-600">
                       セリフ検出：感度
