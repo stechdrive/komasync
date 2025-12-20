@@ -19,6 +19,7 @@ type TimesheetViewportProps = {
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
   onOpenContextMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
+  onSelectionEnd?: (range: SelectionRange | null, point: { x: number; y: number }) => void;
   onTrackSelect?: (trackId: string) => void;
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
@@ -44,6 +45,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onFirstVisibleColumnChange,
   onOpenContextMenu,
   onSelectionChange,
+  onSelectionEnd,
   onTrackSelect,
   onScrubStart,
   onScrubMove,
@@ -70,6 +72,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const isScrubbingRef = useRef(false);
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStateRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  const pinchPanStartRef = useRef<{ centerX: number; centerY: number; scrollLeft: number; scrollTop: number } | null>(
+    null
+  );
   const isPinchingRef = useRef(false);
   const zoomAnchorRef = useRef<{
     clientX: number;
@@ -80,9 +85,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const prevMetricsRef = useRef<{ columnWidth: number; rowHeight: number } | null>(null);
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
+  const selectionRangeRef = useRef<SelectionRange | null>(selection);
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const panPointerIdRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
+  }, []);
+  const touchActionValue: React.CSSProperties['touchAction'] = isIOS ? 'pan-x pan-y' : 'none';
+
+  useEffect(() => {
+    selectionRangeRef.current = selection;
+  }, [selection]);
 
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
@@ -286,6 +305,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     longPressPointRef.current = null;
     pendingTapRef.current = null;
     scrubPendingRef.current = null;
+    stopPan();
     if (isScrubbingRef.current) onScrubEnd?.();
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
@@ -295,6 +315,46 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const stopPinch = () => {
     isPinchingRef.current = false;
     pinchStateRef.current = null;
+    pinchPanStartRef.current = null;
+  };
+
+  const startPan = (e: React.PointerEvent) => {
+    if (isIOS) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    isPanningRef.current = true;
+    panPointerIdRef.current = e.pointerId;
+    panStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+    };
+    scrubPendingRef.current = null;
+    pendingTapRef.current = null;
+    selectionAnchorRef.current = null;
+    clearLongPressTimer();
+    longPressPointRef.current = null;
+  };
+
+  const updatePan = (e: React.PointerEvent) => {
+    if (isIOS) return;
+    if (!isPanningRef.current || panPointerIdRef.current !== e.pointerId) return;
+    const el = scrollRef.current;
+    const start = panStartRef.current;
+    if (!el || !start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    el.scrollLeft = start.scrollLeft - dx;
+    el.scrollTop = start.scrollTop - dy;
+    e.preventDefault();
+  };
+
+  const stopPan = () => {
+    if (isIOS) return;
+    isPanningRef.current = false;
+    panPointerIdRef.current = null;
+    panStartRef.current = null;
   };
 
   const clearLongPressTimer = () => {
@@ -329,12 +389,31 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     updatePointer(e);
+    const scrollEl = scrollRef.current;
+    if (!isIOS && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
+      scrollEl.setPointerCapture(e.pointerId);
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: scrollEl.scrollLeft,
+        scrollTop: scrollEl.scrollTop,
+      };
+    }
     if (activePointersRef.current.size >= 2) {
+      stopPan();
       if (!isPinchingRef.current && onZoomChange) {
         const pinchInfo = getPinchInfo();
         if (pinchInfo && pinchInfo.distance > 0) {
           isPinchingRef.current = true;
           pinchStateRef.current = { startDistance: pinchInfo.distance, startZoom: zoom };
+          if (scrollEl) {
+            pinchPanStartRef.current = {
+              centerX: pinchInfo.center.x,
+              centerY: pinchInfo.center.y,
+              scrollLeft: scrollEl.scrollLeft,
+              scrollTop: scrollEl.scrollTop,
+            };
+          }
           cancelPointerInteraction();
         }
       }
@@ -407,12 +486,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         Math.max(minZoom, pinchState.startZoom * (pinchInfo.distance / pinchState.startDistance))
       );
 
-      if (Math.abs(nextZoom - zoom) < 0.0001) {
+      const zoomDelta = Math.abs(nextZoom - zoom);
+      const panStart = pinchPanStartRef.current;
+      const el = scrollRef.current;
+      if (panStart && el && zoomDelta < 0.02) {
+        const dx = pinchInfo.center.x - panStart.centerX;
+        const dy = pinchInfo.center.y - panStart.centerY;
+        el.scrollLeft = panStart.scrollLeft - dx;
+        el.scrollTop = panStart.scrollTop - dy;
         e.preventDefault();
         return;
       }
 
-      const el = scrollRef.current;
+      if (zoomDelta < 0.0001) {
+        e.preventDefault();
+        return;
+      }
+
       if (el) {
         const rect = el.getBoundingClientRect();
         const contentX = el.scrollLeft + (pinchInfo.center.x - rect.left);
@@ -423,10 +513,21 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           contentX,
           contentY,
         };
+        pinchPanStartRef.current = {
+          centerX: pinchInfo.center.x,
+          centerY: pinchInfo.center.y,
+          scrollLeft: el.scrollLeft,
+          scrollTop: el.scrollTop,
+        };
       }
 
       onZoomChange?.(nextZoom);
       e.preventDefault();
+      return;
+    }
+
+    if (isPanningRef.current && panPointerIdRef.current === e.pointerId) {
+      updatePan(e);
       return;
     }
 
@@ -437,10 +538,19 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         const dy = e.clientY - pending.y;
         const distance = Math.hypot(dx, dy);
         if (distance < 4) return;
-        if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
+      if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
+        if (!isIOS) {
+          startPan(e);
+          updatePan(e);
+        } else {
           scrubPendingRef.current = null;
-          return;
+          pendingTapRef.current = null;
+          selectionAnchorRef.current = null;
+          clearLongPressTimer();
+          longPressPointRef.current = null;
         }
+        return;
+      }
 
         isScrubbingRef.current = true;
         scrubPendingRef.current = null;
@@ -481,10 +591,15 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const dy = e.clientY - pendingTouch.y;
       if (Math.hypot(dx, dy) > 6) {
         if (Math.abs(dx) > Math.abs(dy)) {
-          pendingTapRef.current = null;
-          selectionAnchorRef.current = null;
-          clearLongPressTimer();
-          longPressPointRef.current = null;
+          if (!isIOS) {
+            startPan(e);
+            updatePan(e);
+          } else {
+            pendingTapRef.current = null;
+            selectionAnchorRef.current = null;
+            clearLongPressTimer();
+            longPressPointRef.current = null;
+          }
           return;
         }
         isSelectingRef.current = true;
@@ -501,8 +616,26 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (e.pointerType === 'touch') {
         e.preventDefault();
       }
-      onSelectionChange?.({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
+      const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
+      selectionRangeRef.current = range;
+      onSelectionChange?.(range);
       return;
+    }
+
+    if (
+      !isIOS &&
+      e.pointerType !== 'mouse' &&
+      !pendingTapRef.current &&
+      !scrubPendingRef.current &&
+      panStartRef.current
+    ) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      if (Math.hypot(dx, dy) > 6) {
+        startPan(e);
+        updatePan(e);
+        return;
+      }
     }
 
     if (e.pointerType === 'touch') return;
@@ -516,25 +649,41 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     selectionAnchorRef.current = pending.frame;
     isSelectingRef.current = true;
     if (pending.trackId) onTrackSelect?.(pending.trackId);
-    onSelectionChange?.({ startFrame: pending.frame, endFrame: pending.frame });
+    const initialRange = { startFrame: pending.frame, endFrame: pending.frame };
+    selectionRangeRef.current = initialRange;
+    onSelectionChange?.(initialRange);
     const target = getTrackAtPoint(e.clientX, e.clientY);
     if (target) {
-      onSelectionChange?.({ startFrame: pending.frame, endFrame: target.frame });
+      const nextRange = { startFrame: pending.frame, endFrame: target.frame };
+      selectionRangeRef.current = nextRange;
+      onSelectionChange?.(nextRange);
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     removePointer(e.pointerId);
+    const scrollEl = scrollRef.current;
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) {
+      scrollEl.releasePointerCapture(e.pointerId);
+    }
     if (isPinchingRef.current) {
       if (activePointersRef.current.size < 2) {
         stopPinch();
       }
+      stopPan();
       return;
     }
 
     clearLongPressTimer();
     longPressPointRef.current = null;
     const pending = pendingTapRef.current;
+
+    if (isPanningRef.current && panPointerIdRef.current === e.pointerId) {
+      stopPan();
+      pendingTapRef.current = null;
+      selectionAnchorRef.current = null;
+      return;
+    }
 
     if (scrubPendingRef.current) {
       onFrameTap(scrubPendingRef.current.frame);
@@ -550,6 +699,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
+      const selectionRange = selectionRangeRef.current;
+      if (selectionRange && onSelectionEnd) {
+        onSelectionEnd(selectionRange, { x: e.clientX, y: e.clientY });
+      }
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       return;
@@ -568,6 +721,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const handlePointerCancel = (e: React.PointerEvent) => {
     removePointer(e.pointerId);
+    const scrollEl = scrollRef.current;
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) {
+      scrollEl.releasePointerCapture(e.pointerId);
+    }
     if (isPinchingRef.current) {
       if (activePointersRef.current.size < 2) {
         stopPinch();
@@ -590,7 +747,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerCancel}
-        style={{ touchAction: 'pan-x pan-y' }}
+        style={{ touchAction: touchActionValue }}
       >
         <div className="flex" style={{ width: `${totalColumns * columnWidth}px`, height: `${columnHeight}px` }}>
           {leftSpacerWidth > 0 && (
@@ -612,6 +769,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               columnHeight={columnHeight}
               rulerWidth={rulerWidth}
               rowHeight={rowHeight}
+              touchAction={touchActionValue}
             />
           ))}
 

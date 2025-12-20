@@ -44,16 +44,16 @@ export const TrackMuteMenu: React.FC<TrackMuteMenuProps> = ({
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div
         ref={menuRef}
-        className="absolute min-w-[200px] rounded-xl border border-gray-200 bg-white shadow-xl"
+        className="absolute min-w-[200px] max-h-[calc(var(--app-height)-var(--topbar-h)-var(--dock-h))] rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden flex flex-col"
         style={{ left, top }}
         role="menu"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-3 py-2 text-[10px] font-bold text-gray-500 border-b border-gray-100">
+        <div className="px-3 py-2 text-[var(--ui-xs)] font-bold text-gray-500 border-b border-gray-100">
           ミュート
         </div>
 
-        <div className="p-2 space-y-1">
+        <div className="p-2 space-y-1 overflow-y-auto min-h-0">
           {tracks.map((track) => {
             const theme = getTrackTheme(track.id);
             const isMuted = track.isMuted;
@@ -62,7 +62,7 @@ export const TrackMuteMenu: React.FC<TrackMuteMenuProps> = ({
                 key={track.id}
                 type="button"
                 onClick={() => onToggleTrack(track.id)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                className={`w-full flex items-center gap-2 px-3 py-2 min-h-[var(--control-size)] rounded-lg text-[var(--ui-sm)] ${
                   isMuted ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-700 hover:bg-indigo-50'
                 }`}
                 aria-pressed={isMuted}
