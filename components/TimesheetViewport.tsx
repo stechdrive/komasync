@@ -813,7 +813,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    if (pending.pointerType !== 'mouse') {
+    const hadSelection = selectionRangeRef.current !== null;
+    const isInSelection = isFrameInSelection(pending.frame);
+    if (hadSelection && !isInSelection) {
+      selectionRangeRef.current = null;
+      onSelectionChange?.(null);
+    }
+
+    if (pending.pointerType !== 'mouse' && !hadSelection) {
       const range = { startFrame: pending.frame, endFrame: pending.frame };
       selectionRangeRef.current = range;
       onSelectionChange?.(range);
