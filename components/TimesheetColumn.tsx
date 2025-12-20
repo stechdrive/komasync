@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Track } from '@/types';
 import { getFramesPerColumn, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { formatTimecodeOneBased } from '@/domain/timecode';
@@ -18,6 +18,7 @@ type TimesheetColumnProps = {
   columnHeight: number;
   rulerWidth: number;
   rowHeight: number;
+  trackVolumeMax: Map<string, number>;
   touchAction: React.CSSProperties['touchAction'];
 };
 
@@ -67,6 +68,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   columnHeight,
   rulerWidth,
   rowHeight,
+  trackVolumeMax,
   touchAction,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
@@ -76,6 +78,11 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   const rulerFontSize = clamp(rowHeight * 0.6, 8, 12);
   const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
   const activeTrackId = editTarget === 'all' ? null : editTarget;
+  const waveCanvasRefs = useRef<Map<string, HTMLCanvasElement | null>>(new Map());
+  const trackColumnWidth = useMemo(() => {
+    const count = Math.max(1, tracks.length);
+    return Math.max(1, (columnWidth - rulerWidth * 2) / count);
+  }, [columnWidth, rulerWidth, tracks.length]);
 
   const columnBoundaryClass = useMemo(() => {
     if (columnIndex === 0) return 'border-l-0';
@@ -83,11 +90,73 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     return 'border-l border-gray-300';
   }, [columnIndex]);
 
+  useEffect(() => {
+    if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    const maxHalfPadding = 1;
+    const lineThickness = Math.max(1, Math.round(rowHeight * 0.35));
+
+    tracks.forEach((track) => {
+      const canvas = waveCanvasRefs.current.get(track.id);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const cssWidth = trackColumnWidth;
+      const cssHeight = columnHeight;
+      const nextWidth = Math.max(1, Math.floor(cssWidth * pixelRatio));
+      const nextHeight = Math.max(1, Math.floor(cssHeight * pixelRatio));
+      if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
+      }
+
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      const volumeMax = trackVolumeMax.get(track.id) ?? 0;
+      const volumeDenom = volumeMax > 0 ? volumeMax : 1;
+      const centerX = cssWidth / 2;
+      const maxHalfWidth = Math.max(1, centerX - maxHalfPadding);
+      const theme = getTrackTheme(track.id);
+      ctx.fillStyle = toRgba(theme.accentHex, 0.35);
+
+      for (let i = 0; i < framesPerColumn; i++) {
+        const frame = track.frames[startFrame + i];
+        const volume = frame?.volume ?? 0;
+        if (volume <= 0) continue;
+        const normalized = Math.min(1, volume / volumeDenom);
+        const halfWidth = maxHalfWidth * normalized;
+        if (halfWidth <= 0.5) continue;
+        const y = i * rowHeight + rowHeight / 2 - lineThickness / 2;
+        ctx.fillRect(centerX - halfWidth, y, halfWidth * 2, lineThickness);
+      }
+    });
+  }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, trackVolumeMax, tracks]);
+
   return (
     <div
       className={`relative shrink-0 snap-start ${columnBoundaryClass}`}
       style={{ width: `${columnWidth}px`, height: `${columnHeight}px` }}
     >
+      <div className="absolute inset-0 pointer-events-none z-10">
+        {tracks.map((track, index) => (
+          <canvas
+            key={track.id}
+            ref={(el) => {
+              waveCanvasRefs.current.set(track.id, el);
+            }}
+            className="absolute top-0"
+            style={{
+              left: `${rulerWidth + trackColumnWidth * index}px`,
+              width: `${trackColumnWidth}px`,
+              height: `${columnHeight}px`,
+            }}
+          />
+        ))}
+      </div>
       <div
         className="grid"
         style={{

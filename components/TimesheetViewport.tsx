@@ -153,6 +153,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
 
+  const trackVolumeMax = useMemo(() => {
+    const maxMap = new Map<string, number>();
+    tracks.forEach((track) => {
+      let max = 0;
+      track.frames.forEach((frame) => {
+        if (frame.volume > max) max = frame.volume;
+      });
+      maxMap.set(track.id, max);
+    });
+    return maxMap;
+  }, [tracks]);
+
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
@@ -769,6 +781,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               columnHeight={columnHeight}
               rulerWidth={rulerWidth}
               rowHeight={rowHeight}
+              trackVolumeMax={trackVolumeMax}
               touchAction={touchActionValue}
             />
           ))}
