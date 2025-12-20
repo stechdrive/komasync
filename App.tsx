@@ -10,8 +10,13 @@ import {
 } from './services/audioEdit';
 import { exportTracksToZip } from './services/audioExporter';
 import { getVadTuning, VadPreset, VadTuning } from './services/vad';
-import { analyzeAudioBufferWithSileroVadEngine } from './services/sileroVadEngine';
+import {
+  analyzeAudioBufferWithSileroVadEngine,
+  getSileroVadStatus,
+  subscribeSileroVadStatus,
+} from './services/sileroVadEngine';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
+import { computeVadAutoTuning } from './services/vadAutoTuner';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
 import { ClipboardMenu } from './components/ClipboardMenu';
@@ -36,6 +41,8 @@ const MIC_SLEEP_CHECK_MS = 15 * 1000;
 const MIN_SHEET_ZOOM = 1;
 const MAX_SHEET_ZOOM = 3;
 const SHEET_ZOOM_STEP = 0.1;
+const AUTO_VAD_BASE_THRESHOLD_SCALE = 1;
+const AUTO_VAD_BASE_STABILITY = 0.4;
 
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
 const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
@@ -86,8 +93,9 @@ export default function App() {
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
-  const [vadStability, setVadStability] = useState(0.6);
-  const [vadThresholdScale, setVadThresholdScale] = useState(1);
+  const [vadStability, setVadStability] = useState(AUTO_VAD_BASE_STABILITY);
+  const [vadThresholdScale, setVadThresholdScale] = useState(AUTO_VAD_BASE_THRESHOLD_SCALE);
+  const [isVadAuto, setIsVadAuto] = useState(true);
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -96,6 +104,7 @@ export default function App() {
   const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   const [sheetZoom, setSheetZoom] = useState(1);
+  const [isSileroActive, setIsSileroActive] = useState(() => getSileroVadStatus() === 'silero');
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
@@ -119,6 +128,7 @@ export default function App() {
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
   const vadReprocessIdRef = useRef(0);
+  const lastAutoTuneRef = useRef<Map<string, AudioBuffer | null>>(new Map());
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -157,6 +167,33 @@ export default function App() {
   useEffect(() => {
     isMicPreparingRef.current = isMicPreparing;
   }, [isMicPreparing]);
+
+  useEffect(() => {
+    return subscribeSileroVadStatus((status) => {
+      setIsSileroActive(status === 'silero');
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isVadAuto) return;
+    const tracksWithAudio = tracks.filter((track) => track.audioBuffer);
+    if (tracksWithAudio.length === 0) return;
+    if (!tracksWithAudio.every((track) => track.frames.length > 0)) return;
+    if (!tracksWithAudio.every((track) => track.frames.some((frame) => frame.volume > 0))) return;
+
+    const shouldTune = tracksWithAudio.some(
+      (track) => lastAutoTuneRef.current.get(track.id) !== track.audioBuffer
+    );
+    if (!shouldTune) return;
+
+    const autoTuning = computeVadAutoTuning(
+      tracksWithAudio.map((track) => track.frames),
+      FPS
+    );
+    lastAutoTuneRef.current = new Map(tracks.map((track) => [track.id, track.audioBuffer]));
+    setVadThresholdScale(autoTuning.thresholdScale);
+    setVadStability(autoTuning.stability);
+  }, [isVadAuto, tracks]);
 
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
@@ -289,12 +326,29 @@ export default function App() {
   }, []);
 
   const handleVadThresholdScaleChange = useCallback((nextScale: number) => {
+    if (isVadAuto) return;
     if (!vadThresholdHistoryRef.current) {
       vadThresholdHistoryRef.current = { startValue: vadThresholdScale };
     }
     setVadThresholdScale(nextScale);
     scheduleVadThresholdCommit();
-  }, [scheduleVadThresholdCommit, vadThresholdScale]);
+  }, [isVadAuto, scheduleVadThresholdCommit, vadThresholdScale]);
+
+  const handleVadStabilityChange = useCallback((nextValue: number) => {
+    if (isVadAuto) return;
+    setVadStability(nextValue);
+  }, [isVadAuto]);
+
+  const handleToggleVadAuto = useCallback((nextValue: boolean) => {
+    setIsVadAuto(nextValue);
+    if (nextValue) {
+      clearVadThresholdCommitTimer();
+      vadThresholdHistoryRef.current = null;
+      lastAutoTuneRef.current = new Map();
+      setVadThresholdScale(AUTO_VAD_BASE_THRESHOLD_SCALE);
+      setVadStability(AUTO_VAD_BASE_STABILITY);
+    }
+  }, []);
 
   const saveToHistory = useCallback(() => {
     commitVadThresholdHistory();
@@ -1353,7 +1407,6 @@ export default function App() {
   const totalTimecode = formatTimecode(maxFrames, FPS);
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
   const mutedCount = tracks.filter((track) => track.isMuted).length;
-  const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const isZoomOutDisabled = sheetZoom <= MIN_SHEET_ZOOM + 0.001;
   const isZoomInDisabled = sheetZoom >= MAX_SHEET_ZOOM - 0.001;
 
@@ -1404,10 +1457,6 @@ export default function App() {
           isMicReady={isMicReady}
           isMicPreparing={isMicPreparing}
           isAllTracks={editTarget === 'all'}
-          vadThresholdScale={vadThresholdScale}
-          vadThresholdValue={vadTuning.startThreshold}
-          onChangeVadThresholdScale={handleVadThresholdScaleChange}
-          onCommitVadThresholdScale={commitVadThresholdHistory}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onStartRecording={handleStartRecording}
@@ -1458,6 +1507,8 @@ export default function App() {
         vadPreset={vadPreset}
         vadStability={vadStability}
         vadThresholdScale={vadThresholdScale}
+        isVadAuto={isVadAuto}
+        isSileroActive={isSileroActive}
         inputRms={inputRms}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
@@ -1466,7 +1517,10 @@ export default function App() {
         onExportSheetImagesAll={() => void handleExportSheetImagesAll()}
         onFileUpload={handleFileUpload}
         onChangeVadPreset={setVadPreset}
-        onChangeVadStability={setVadStability}
+        onChangeVadStability={handleVadStabilityChange}
+        onToggleVadAuto={handleToggleVadAuto}
+        onChangeVadThresholdScale={handleVadThresholdScaleChange}
+        onCommitVadThresholdScale={commitVadThresholdHistory}
         onTogglePlayWhileRecording={() => setPlayWhileRecording((prev) => !prev)}
       />
 
