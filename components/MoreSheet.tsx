@@ -60,7 +60,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   const thresholdPercent = Math.round(vadThresholdScale * 100);
   const thresholdValueClass = isSileroActive ? 'text-blue-600' : 'text-gray-600';
   const autoCaption = isVadAuto
-    ? '感度と途切れにくさを自動で最適化'
+    ? '6コマ以上の録音があると自動で最適化'
     : '手動で感度と途切れにくさを調整できます';
 
   return (
