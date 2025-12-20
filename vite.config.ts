@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const coopHeaders = {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    };
     const normalizeBase = (value: string): string => {
       // `./` は相対パス配信（どのサブパスでも動く）向けに許可
       if (value === './') return './';
@@ -27,6 +31,10 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        headers: coopHeaders,
+      },
+      preview: {
+        headers: coopHeaders,
       },
       plugins: [react()],
       resolve: {
