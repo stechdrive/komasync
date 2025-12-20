@@ -7,6 +7,7 @@ type VadWorkerRequest = {
   sampleRate: number;
   fps: number;
   tuning: VadTuning;
+  baseUrl: string;
 };
 
 type VadWorkerResponse = {
@@ -24,6 +25,14 @@ const pending = new Map<
   { resolve: (frames: FrameData[]) => void; reject: (error: Error) => void }
 >();
 
+const resolveBaseUrl = (): string => {
+  try {
+    return new URL(import.meta.env.BASE_URL, window.location.href).toString();
+  } catch {
+    return import.meta.env.BASE_URL || '/';
+  }
+};
+
 const failWorker = (error: Error) => {
   if (workerFailed) return;
   workerFailed = true;
@@ -37,7 +46,7 @@ const failWorker = (error: Error) => {
 
 const ensureWorker = () => {
   if (worker || workerFailed) return;
-  worker = new Worker(new URL('./vadWorker.ts', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./sileroVadWorker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (event) => {
     const { id, frames, error } = event.data as VadWorkerResponse;
     const entry = pending.get(id);
@@ -65,7 +74,7 @@ const ensureWorker = () => {
   };
 };
 
-export const analyzeAudioBufferWithVadEngine = async (
+export const analyzeAudioBufferWithSileroVadEngine = async (
   audioBuffer: AudioBuffer,
   fps: number,
   tuning: VadTuning
@@ -99,6 +108,7 @@ export const analyzeAudioBufferWithVadEngine = async (
         sampleRate: audioBuffer.sampleRate,
         fps,
         tuning,
+        baseUrl: resolveBaseUrl(),
       };
       worker.postMessage(payload, [samples.buffer]);
     });
