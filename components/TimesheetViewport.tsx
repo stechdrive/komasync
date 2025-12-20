@@ -208,16 +208,52 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
     const el = scrollRef.current;
-    if (!el || columnWidth <= 0) return;
+    if (!el || columnWidth <= 0 || rowHeight <= 0) return;
 
-    const sheetIndex = Math.floor(currentFrame / framesPerSheet);
-    if (lastAutoSheetRef.current === sheetIndex) return;
-    lastAutoSheetRef.current = sheetIndex;
+    if (!isZoomed) {
+      const sheetIndex = Math.floor(currentFrame / framesPerSheet);
+      if (lastAutoSheetRef.current === sheetIndex) return;
+      lastAutoSheetRef.current = sheetIndex;
 
-    // 再生中にシート境界へ到達したら自動スクロール
-    const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
-    el.scrollTo({ left: targetLeft, behavior: 'smooth' });
-  }, [columnWidth, currentFrame, framesPerSheet, isAutoScrollActive]);
+      // 再生中にシート境界へ到達したら自動スクロール
+      const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
+      el.scrollTo({ left: targetLeft, behavior: 'smooth' });
+      return;
+    }
+
+    lastAutoSheetRef.current = null;
+
+    // ズーム中は再生ヘッドが見える位置まで追従スクロール
+    const columnIndex = Math.floor(currentFrame / framesPerColumn);
+    const rowIndex = currentFrame % framesPerColumn;
+    const columnLeft = columnIndex * columnWidth;
+    const columnRight = columnLeft + columnWidth;
+    const rowTop = rowIndex * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    const viewportWidth = el.clientWidth;
+    const viewportHeight = el.clientHeight;
+    const marginX = Math.min(columnWidth * 0.1, 32);
+    const marginY = Math.min(rowHeight * 2, 48);
+
+    let nextLeft = el.scrollLeft;
+    let nextTop = el.scrollTop;
+
+    if (columnLeft < nextLeft + marginX) {
+      nextLeft = Math.max(0, columnLeft - marginX);
+    } else if (columnRight > nextLeft + viewportWidth - marginX) {
+      nextLeft = Math.max(0, columnRight - viewportWidth + marginX);
+    }
+
+    if (rowTop < nextTop + marginY) {
+      nextTop = Math.max(0, rowTop - marginY);
+    } else if (rowBottom > nextTop + viewportHeight - marginY) {
+      nextTop = Math.max(0, rowBottom - viewportHeight + marginY);
+    }
+
+    if (nextLeft !== el.scrollLeft || nextTop !== el.scrollTop) {
+      el.scrollTo({ left: nextLeft, top: nextTop, behavior: 'smooth' });
+    }
+  }, [columnWidth, currentFrame, framesPerColumn, framesPerSheet, isAutoScrollActive, isZoomed, rowHeight]);
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
