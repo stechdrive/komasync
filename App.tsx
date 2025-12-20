@@ -338,6 +338,7 @@ export default function App() {
   useEffect(() => {
     // VAD設定は非破壊の表示変更なので、履歴は別ロジックで管理する。
     // ここでは派生 frames の再生成のみを行う。
+    type VadAnalysisResult = { id: string; buffer: AudioBuffer; frames: FrameData[] };
     const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
     const requestId = vadReprocessIdRef.current + 1;
     vadReprocessIdRef.current = requestId;
@@ -345,7 +346,7 @@ export default function App() {
 
     const run = async () => {
       const results = await Promise.all(
-        snapshot.map(async (track) => {
+        snapshot.map(async (track): Promise<VadAnalysisResult | null> => {
           if (!track.audioBuffer) return null;
           try {
             const frames = await analyzeAudioBufferWithSileroVadEngine(track.audioBuffer, FPS, tuning);
@@ -359,9 +360,9 @@ export default function App() {
 
       if (vadReprocessIdRef.current !== requestId) return;
 
-      const resultMap = new Map(
+      const resultMap = new Map<string, VadAnalysisResult>(
         results
-          .filter((result): result is { id: string; buffer: AudioBuffer; frames: FrameData[] } => Boolean(result))
+          .filter((result): result is VadAnalysisResult => result !== null)
           .map((result) => [result.id, result])
       );
 
