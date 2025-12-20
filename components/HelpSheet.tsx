@@ -46,7 +46,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>左ルーラーはシート内のコマ数、右ルーラーは総コマ数です。</li>
                 <li>現在行の右ルーラーは「秒+コマ」（1スタート）で表示します。</li>
                 <li>線の強さは「1秒」＞「0.5秒」＞「6コマ」の順です。</li>
-                <li>セリフ色の上に波形が重なって表示されます（トラック内で正規化）。</li>
+                <li>セリフラベルの上に波形が重なって表示されます（トラック内で正規化）。</li>
               </ul>
             </section>
 
@@ -64,6 +64,8 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
               <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">再生と録音</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>再生ボタンで現在位置から再生します。</li>
+                <li>スクラブ再生は、再生ヘッドを動かしながら1コマごとの音を断片的に再生する操作です。</li>
+                <li>ルーラーやプレイヘッドをドラッグするとスクラブ再生できます。</li>
                 <li>録音ボタンで録音開始、停止で終了します。</li>
                 <li>録音は現在の再生ヘッド位置から始まります。</li>
                 <li>準備中…表示の後に録音が開始します。</li>
