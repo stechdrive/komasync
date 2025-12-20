@@ -113,6 +113,7 @@ export default function App() {
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
 
   const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -149,6 +150,12 @@ export default function App() {
   const animationFrameRef = useRef<number>(0);
 
   useViewportHeight();
+
+  useEffect(() => {
+    if (!selection) {
+      setSelectionMenu(null);
+    }
+  }, [selection]);
 
   // Stats (Calculate total max duration across all tracks)
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
@@ -1299,7 +1306,16 @@ export default function App() {
 
   const handleSelectionChange = (range: SelectionRange | null) => {
     setSelection(range);
+    setSelectionMenu(null);
   };
+
+  const handleSelectionEnd = useCallback(
+    (range: SelectionRange | null, point: { x: number; y: number }) => {
+      if (!range) return;
+      setSelectionMenu(point);
+    },
+    []
+  );
 
   const handleZoomIn = useCallback(() => {
     setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
@@ -1497,6 +1513,7 @@ export default function App() {
         onBackgroundClick={handleBackgroundClick}
         onOpenContextMenu={handleOpenClipboardMenu}
         onSelectionChange={handleSelectionChange}
+        onSelectionEnd={handleSelectionEnd}
         onTrackSelect={handleTrackSelect}
         onScrubStart={handleScrubStart}
         onScrubMove={handleScrubMove}
@@ -1508,10 +1525,18 @@ export default function App() {
       <EditPalette
         selectionCount={selectionCount}
         targetLabel={targetLabel}
-        onCut={() => void handleCut()}
-        onDelete={() => void handleDeleteSelection()}
+        anchor={selectionMenu}
+        onCut={() => {
+          setSelectionMenu(null);
+          void handleCut();
+        }}
+        onDelete={() => {
+          setSelectionMenu(null);
+          void handleDeleteSelection();
+        }}
         onClearSelection={() => {
           setSelection(null);
+          setSelectionMenu(null);
         }}
       />
 
