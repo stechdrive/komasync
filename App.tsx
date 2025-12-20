@@ -43,6 +43,7 @@ const MAX_SHEET_ZOOM = 3;
 const SHEET_ZOOM_STEP = 0.1;
 const AUTO_VAD_BASE_THRESHOLD_SCALE = 1;
 const AUTO_VAD_BASE_STABILITY = 0.4;
+const MIN_AUTO_TUNE_FRAMES = 6;
 
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
 const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
@@ -176,21 +177,25 @@ export default function App() {
 
   useEffect(() => {
     if (!isVadAuto) return;
-    const tracksWithAudio = tracks.filter((track) => track.audioBuffer);
-    if (tracksWithAudio.length === 0) return;
-    if (!tracksWithAudio.every((track) => track.frames.length > 0)) return;
-    if (!tracksWithAudio.every((track) => track.frames.some((frame) => frame.volume > 0))) return;
+    const eligibleTracks = tracks.filter(
+      (track) =>
+        track.audioBuffer &&
+        track.frames.length >= MIN_AUTO_TUNE_FRAMES &&
+        track.frames.some((frame) => frame.volume > 0)
+    );
+    if (eligibleTracks.length === 0) return;
 
-    const shouldTune = tracksWithAudio.some(
+    const shouldTune = eligibleTracks.some(
       (track) => lastAutoTuneRef.current.get(track.id) !== track.audioBuffer
     );
     if (!shouldTune) return;
 
     const autoTuning = computeVadAutoTuning(
-      tracksWithAudio.map((track) => track.frames),
-      FPS
+      eligibleTracks.map((track) => track.frames),
+      FPS,
+      MIN_AUTO_TUNE_FRAMES
     );
-    lastAutoTuneRef.current = new Map(tracks.map((track) => [track.id, track.audioBuffer]));
+    lastAutoTuneRef.current = new Map(eligibleTracks.map((track) => [track.id, track.audioBuffer]));
     setVadThresholdScale(autoTuning.thresholdScale);
     setVadStability(autoTuning.stability);
   }, [isVadAuto, tracks]);

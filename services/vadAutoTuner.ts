@@ -102,11 +102,15 @@ const computeTrackStats = (frames: FrameData[]): TrackStats => {
   };
 };
 
-export const computeVadAutoTuning = (tracksFrames: FrameData[][], fps: number): VadAutoTuning => {
+export const computeVadAutoTuning = (
+  tracksFrames: FrameData[][],
+  fps: number,
+  minFrames = 6
+): VadAutoTuning => {
   const statsList = tracksFrames.map((frames) => computeTrackStats(frames)).filter((stats) => stats.totalFrames > 0);
   const totalFrames = statsList.reduce((sum, stats) => sum + stats.totalFrames, 0);
 
-  if (totalFrames < fps * 2) {
+  if (totalFrames < minFrames) {
     return { thresholdScale: 1, stability: 0.4 };
   }
 
