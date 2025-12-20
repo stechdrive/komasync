@@ -89,12 +89,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
 
-          <div className="min-w-0 leading-tight">
-            <div className="text-[var(--ui-sm)] font-bold truncate">
+          <div className="min-w-0 flex items-baseline gap-2">
+            <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">
               {APP_NAME} v{APP_VERSION}
             </div>
-            <div className="text-[var(--ui-xs)] opacity-80 truncate">シート {sheetNumber}</div>
-            <div className="font-mono text-[var(--ui-sm)] truncate">
+            <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">
+              シート {sheetNumber}
+            </div>
+            <div className="font-mono text-[var(--ui-sm)] truncate min-w-0">
               総 {totalTimecode}
               {selectionTimecode ? ` / 選 ${selectionTimecode}` : ''}
             </div>
