@@ -32,6 +32,24 @@ const getRowBorderClass = (rowIndex: number, fps: number, isRuler: boolean): str
   return isRuler ? 'border-b border-gray-100' : 'border-b border-gray-200';
 };
 
+const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+  const normalized = hex.replace('#', '').trim();
+  if (normalized.length !== 6) return null;
+  const value = Number.parseInt(normalized, 16);
+  if (Number.isNaN(value)) return null;
+  return {
+    r: (value >> 16) & 0xff,
+    g: (value >> 8) & 0xff,
+    b: value & 0xff,
+  };
+};
+
+const toRgba = (hex: string, alpha: number): string => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return `rgba(59, 130, 246, ${alpha})`;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+};
+
 export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   columnIndex,
   startFrame,
@@ -51,6 +69,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   const showAllFrameLabels = rowHeight >= 10;
   const rulerFontSize = showAllFrameLabels ? '9px' : '10px';
   const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
+  const activeTrackId = editTarget === 'all' ? null : editTarget;
 
   const columnBoundaryClass = useMemo(() => {
     if (columnIndex === 0) return 'border-l-0';
@@ -106,6 +125,11 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 const frameData = track.frames[globalFrameIndex];
                 const isSpeech = Boolean(frameData?.isSpeech);
                 const isTargetTrack = editTarget === 'all' || editTarget === track.id;
+                const isActiveTrack = activeTrackId === track.id;
+                const theme = getTrackTheme(track.id);
+                const highlightBorder = isActiveTrack ? toRgba(theme.accentHex, 0.6) : undefined;
+                const highlightBg =
+                  isActiveTrack && !isCurrent && !isInSelection && !isPastEnd ? toRgba(theme.accentHex, 0.12) : undefined;
 
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
 
@@ -126,6 +150,10 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     className={`relative cursor-pointer ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
                       touchAction: 'pan-x',
+                      ...(highlightBorder
+                        ? { boxShadow: `inset 2px 0 0 ${highlightBorder}, inset -2px 0 0 ${highlightBorder}` }
+                        : {}),
+                      ...(highlightBg ? { backgroundColor: highlightBg } : {}),
                     }}
                   >
                     {isEndBoundary && (
