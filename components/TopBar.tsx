@@ -77,8 +77,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <div className="safe-area-top bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="min-h-[var(--topbar-h)] px-3 py-2 flex items-center justify-between gap-3">
+    <div className="safe-area-top h-full bg-indigo-600 text-white border-b border-indigo-700/40">
+      <div className="h-full px-3 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -99,7 +99,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
 
-          <div className="min-w-0 flex flex-col gap-0.5">
+          <div className="min-w-0 flex flex-col gap-0.5 leading-tight">
             <div className="min-w-0 flex items-baseline gap-2">
               <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
               <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">シート {sheetNumber}</div>

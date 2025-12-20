@@ -25,13 +25,13 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
         {showSelectionActions && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-lg">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-blue-700 font-bold">{selectionCount}コマ選択中</div>
+              <div className="text-[var(--ui-xs)] text-blue-700 font-bold">{selectionCount}コマ選択中</div>
               <div className="flex items-center gap-2">
-                <div className="text-[10px] text-blue-600">{targetLabel}</div>
+                <div className="text-[var(--ui-xs)] text-blue-600">{targetLabel}</div>
                 <button
                   type="button"
                   onClick={onClearSelection}
-                  className="text-[10px] text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                  className="min-h-[var(--control-size)] px-2 text-[var(--ui-xs)] text-blue-700 hover:text-blue-900 flex items-center gap-1 rounded-md"
                   title="選択解除"
                 >
                   <X className="w-3 h-3" />
@@ -44,21 +44,20 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
               <button
                 type="button"
                 onClick={onCut}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-lg border border-blue-100 text-sm font-bold shadow-sm"
+                className="min-h-[var(--control-size)] flex items-center justify-center gap-2 bg-white hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-lg border border-blue-100 text-[var(--ui-sm)] font-bold shadow-sm"
               >
                 <Scissors className="w-4 h-4" /> 切り取り
               </button>
               <button
                 type="button"
                 onClick={onDelete}
-                className="flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2 rounded-lg border border-red-200 text-sm font-bold shadow-sm"
+                className="min-h-[var(--control-size)] flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2 rounded-lg border border-red-200 text-[var(--ui-sm)] font-bold shadow-sm"
               >
                 <Trash2 className="w-4 h-4" /> 削除
               </button>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

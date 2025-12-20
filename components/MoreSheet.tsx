@@ -127,26 +127,26 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute inset-x-0 bottom-0 safe-area-bottom">
-        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[75vh] overflow-hidden">
+        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[calc(var(--app-height)-var(--topbar-h)-var(--dock-h))] overflow-hidden flex flex-col">
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-            <div className="font-bold text-gray-800">その他</div>
+            <div className="font-bold text-[var(--ui-sm)] text-gray-800">その他</div>
             <button
               type="button"
               onClick={onClose}
-              className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-gray-100"
+              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-gray-100"
               title="閉じる"
             >
-              <X className="w-5 h-5" />
+              <X className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
           </div>
 
-          <div className="p-4 overflow-y-auto space-y-4">
+          <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-4 text-[var(--ui-sm)] text-gray-700">
             <div className="space-y-2">
-              <div className="text-xs text-gray-500">書き出し</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">書き出し</div>
               <button
                 type="button"
                 onClick={onExportAudio}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-gray-700"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
               >
                 <FileAudio className="w-5 h-5" />
                 トラック別WAVをZIPでダウンロード
@@ -156,7 +156,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 <button
                   type="button"
                   onClick={onExportSheetImagesCurrent}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-gray-700"
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
                 >
                   <ImageDown className="w-5 h-5" />
                   表示中
@@ -164,7 +164,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 <button
                   type="button"
                   onClick={onExportSheetImagesAll}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-gray-700"
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
                 >
                   <ImageDown className="w-5 h-5" />
                   全シート
@@ -173,8 +173,8 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
             </div>
 
             <div className="space-y-2">
-              <div className="text-xs text-gray-500">アップロード</div>
-              <label className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-gray-700 cursor-pointer">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">アップロード</div>
+              <label className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 cursor-pointer">
                 <Upload className="w-5 h-5" />
                 {activeTrackName} に音声を読み込む
                 <input type="file" accept="audio/*" onChange={onFileUpload} className="hidden" />
@@ -182,34 +182,38 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
             </div>
 
             <div className="space-y-2">
-              <div className="text-xs text-gray-500">セリフ検出</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">セリフ検出</div>
 
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-700">自動調整</div>
+                  <div className="text-[var(--ui-sm)] text-gray-700">自動調整</div>
                   <button
                     type="button"
                     onClick={() => onToggleVadAuto(!isVadAuto)}
-                    className={`w-10 h-6 rounded-full transition-colors relative ${
-                      isVadAuto ? 'bg-indigo-600' : 'bg-gray-300'
-                    }`}
+                    className="w-[var(--control-size)] h-[var(--control-size)] flex items-center justify-center"
                     aria-pressed={isVadAuto}
                     aria-label="セリフ検出の自動調整"
                   >
                     <div
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                        isVadAuto ? 'translate-x-4' : 'translate-x-0'
+                      className={`relative w-10 h-6 rounded-full transition-colors ${
+                        isVadAuto ? 'bg-indigo-600' : 'bg-gray-300'
                       }`}
-                    />
+                    >
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          isVadAuto ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </div>
                   </button>
                 </div>
-                <div className="text-[11px] text-gray-500">{autoCaption}</div>
+                <div className="text-[var(--ui-xs)] text-gray-500">{autoCaption}</div>
 
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <div className="flex items-center gap-2 text-[var(--ui-sm)] text-gray-700">
                     <Mic className="w-5 h-5 text-gray-500 shrink-0" /> 入力レベル
                   </div>
-                  <div className="font-mono text-xs text-gray-600">
+                  <div className="font-mono text-[var(--ui-xs)] text-gray-600">
                     {inputRms.toFixed(3)} / th{' '}
                     <span className={thresholdValueClass}>{vadTuning.startThreshold.toFixed(3)}</span>
                   </div>
@@ -218,11 +222,11 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 <VuMeter value={inputRms} threshold={vadTuning.startThreshold} />
 
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-600">詳細設定</div>
+                  <div className="text-[var(--ui-xs)] text-gray-600">詳細設定</div>
                   <button
                     type="button"
                     onClick={() => setIsVadDetailsOpen((prev) => !prev)}
-                    className="text-xs text-indigo-600 font-bold hover:text-indigo-800"
+                    className="text-[var(--ui-xs)] text-indigo-600 font-bold hover:text-indigo-800"
                   >
                     {isVadDetailsOpen ? '閉じる' : '開く'}
                   </button>
@@ -231,11 +235,11 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 {isVadDetailsOpen && (
                   <div className={`space-y-3 ${isVadAuto ? 'opacity-60' : ''}`}>
                     {isVadAuto && (
-                      <div className="text-[11px] text-gray-500">
+                      <div className="text-[var(--ui-xs)] text-gray-500">
                         自動調整中は詳細設定を変更できません。
                       </div>
                     )}
-                    <div className="text-[11px] text-gray-500 space-y-1">
+                    <div className="text-[var(--ui-xs)] text-gray-500 space-y-1">
                       <div>
                         開発用: VADエンジン <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
                       </div>
@@ -256,13 +260,13 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                         </span>
                       </div>
                       {vadEngineError && (
-                        <div className="text-[11px] text-gray-500">
+                        <div className="text-[var(--ui-xs)] text-gray-500">
                           VADエラー: <span className="font-mono text-rose-600 break-all">{vadEngineError}</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="text-xs text-gray-600">
+                    <div className="text-[var(--ui-xs)] text-gray-600">
                       セリフ検出：感度
                       <div className="mt-1 flex items-center gap-2">
                         <input
@@ -279,11 +283,11 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:cursor-default"
                           aria-label="セリフ検出感度"
                         />
-                        <div className="w-12 text-right font-mono text-xs text-gray-600">{thresholdPercent}%</div>
+                        <div className="w-12 text-right font-mono text-[var(--ui-xs)] text-gray-600">{thresholdPercent}%</div>
                       </div>
                     </div>
 
-                    <div className="text-xs text-gray-600">
+                    <div className="text-[var(--ui-xs)] text-gray-600">
                       セリフ検出：途切れにくさ
                       <div className="mt-1 flex items-center gap-2">
                         <input
@@ -296,17 +300,17 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                           disabled={isVadAuto}
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:cursor-default"
                         />
-                        <div className="w-10 text-right font-mono text-xs text-gray-600">{stabilityPercent}</div>
+                        <div className="w-10 text-right font-mono text-[var(--ui-xs)] text-gray-600">{stabilityPercent}</div>
                       </div>
                     </div>
 
-                    <label className="text-xs text-gray-600">
+                    <label className="text-[var(--ui-xs)] text-gray-600">
                       環境
                       <select
                         value={vadPreset}
                         onChange={(e) => onChangeVadPreset(e.target.value as VadPreset)}
                         disabled={isVadAuto}
-                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm disabled:bg-gray-100"
+                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-[var(--ui-sm)] disabled:bg-gray-100"
                       >
                         <option value="quiet">静か</option>
                         <option value="normal">普通</option>
@@ -314,7 +318,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                       </select>
                     </label>
 
-                    <div className="text-[11px] text-gray-500">
+                    <div className="text-[var(--ui-xs)] text-gray-500">
                       hold {vadTuning.holdFrames}f / end {vadTuning.endThreshold.toFixed(3)}
                     </div>
                   </div>
@@ -323,24 +327,30 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
             </div>
 
             <div className="space-y-2">
-              <div className="text-xs text-gray-500">録音</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">録音</div>
               <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">
-                <div className="flex items-center gap-2 text-sm text-gray-700">
+                <div className="flex items-center gap-2 text-[var(--ui-sm)] text-gray-700">
                   <Headphones className="w-5 h-5 text-gray-500" /> 録音中の再生
                 </div>
                 <button
                   type="button"
                   onClick={onTogglePlayWhileRecording}
-                  className={`w-10 h-6 rounded-full transition-colors relative ${playWhileRecording ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  className="w-[var(--control-size)] h-[var(--control-size)] flex items-center justify-center"
                 >
                   <div
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      playWhileRecording ? 'translate-x-4' : 'translate-x-0'
+                    className={`relative w-10 h-6 rounded-full transition-colors ${
+                      playWhileRecording ? 'bg-indigo-600' : 'bg-gray-300'
                     }`}
-                  />
+                  >
+                    <div
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                        playWhileRecording ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
                 </button>
               </div>
-              <div className="text-[11px] text-gray-500">
+              <div className="text-[var(--ui-xs)] text-gray-500">
                 既存トラックを聞きながら録音する場合にON（遅延が気になる場合はOFF）
               </div>
             </div>

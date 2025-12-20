@@ -20,6 +20,8 @@ type TimesheetColumnProps = {
   rowHeight: number;
 };
 
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
 const getRowBorderClass = (rowIndex: number, fps: number, isRuler: boolean): string => {
   const frameInSecond = rowIndex + 1;
   const isSecond = frameInSecond % fps === 0;
@@ -68,8 +70,8 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   const framesPerColumn = getFramesPerColumn(fps);
   const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
   const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
-  const showAllFrameLabels = rowHeight >= 10;
-  const rulerFontSize = showAllFrameLabels ? '9px' : '10px';
+  const labelStep = rowHeight >= 11 ? 1 : rowHeight >= 9 ? 6 : rowHeight >= 7 ? 12 : 0;
+  const rulerFontSize = clamp(rowHeight * 0.6, 8, 12);
   const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
   const activeTrackId = editTarget === 'all' ? null : editTarget;
 
@@ -95,7 +97,10 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
         {Array.from({ length: framesPerColumn }).map((_, rowIndex) => {
           const globalFrameIndex = startFrame + rowIndex;
           const frameNumInColumn = rowIndex + 1;
-          const showFrameLabel = showAllFrameLabels || frameNumInColumn === 1 || frameNumInColumn % 6 === 0;
+          const showFrameLabel =
+            labelStep === 1 ||
+            frameNumInColumn === 1 ||
+            (labelStep > 1 && frameNumInColumn % labelStep === 0);
           const localFrameNumber = columnOffset + frameNumInColumn;
           const globalFrameNumber = globalFrameIndex + 1;
 
@@ -117,8 +122,8 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
               <div
                 data-frame-index={globalFrameIndex}
                 data-ruler="left"
-                className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
-                style={{ fontSize: rulerFontSize, touchAction: 'pan-x pan-y' }}
+                className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'pan-x pan-y' }}
               >
                 {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
@@ -177,8 +182,8 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
               <div
                 data-frame-index={globalFrameIndex}
                 data-ruler="right"
-                className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: rulerFontSize, touchAction: 'pan-x pan-y' }}
+                className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
+                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction: 'pan-x pan-y' }}
               >
                 {isCurrent
                   ? formatTimecodeOneBased(globalFrameIndex, fps)
