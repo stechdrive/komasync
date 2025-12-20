@@ -15,6 +15,7 @@ type TimesheetColumnProps = {
   selection: SelectionRange | null;
   maxFrames: number;
   columnWidth: number;
+  columnHeight: number;
   rulerWidth: number;
   rowHeight: number;
 };
@@ -60,6 +61,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   selection,
   maxFrames,
   columnWidth,
+  columnHeight,
   rulerWidth,
   rowHeight,
 }) => {
@@ -79,13 +81,14 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
 
   return (
     <div
-      className={`relative shrink-0 h-full snap-start ${columnBoundaryClass}`}
-      style={{ width: `${columnWidth}px` }}
+      className={`relative shrink-0 snap-start ${columnBoundaryClass}`}
+      style={{ width: `${columnWidth}px`, height: `${columnHeight}px` }}
     >
       <div
-        className="h-full grid"
+        className="grid"
         style={{
-          gridTemplateRows: `repeat(${framesPerColumn}, minmax(0, 1fr))`,
+          height: `${columnHeight}px`,
+          gridTemplateRows: `repeat(${framesPerColumn}, ${rowHeight}px)`,
           gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rulerWidth}px`,
         }}
       >
@@ -115,7 +118,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="left"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
-                style={{ fontSize: rulerFontSize, touchAction: 'pan-x' }}
+                style={{ fontSize: rulerFontSize, touchAction: 'pan-x pan-y' }}
               >
                 {showFrameLabel || isCurrent ? localFrameNumber : ''}
               </div>
@@ -149,7 +152,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     data-track-id={track.id}
                     className={`relative cursor-pointer ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
-                      touchAction: 'pan-x',
+                      touchAction: 'pan-x pan-y',
                       ...(highlightBorder
                         ? { boxShadow: `inset 2px 0 0 ${highlightBorder}, inset -2px 0 0 ${highlightBorder}` }
                         : {}),
@@ -174,7 +177,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 data-frame-index={globalFrameIndex}
                 data-ruler="right"
                 className={`flex items-center justify-center font-mono select-none overflow-hidden cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: rulerFontSize, touchAction: 'pan-x' }}
+                style={{ fontSize: rulerFontSize, touchAction: 'pan-x pan-y' }}
               >
                 {isCurrent
                   ? formatTimecodeOneBased(globalFrameIndex, fps)

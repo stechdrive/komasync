@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Undo2, Volume2, VolumeX } from 'lucide-react';
+import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Scan, Undo2, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 
 type TopBarProps = {
@@ -10,9 +10,14 @@ type TopBarProps = {
   isUndoDisabled: boolean;
   isRedoDisabled: boolean;
   mutedCount: number;
+  isZoomInDisabled: boolean;
+  isZoomOutDisabled: boolean;
   onReset: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
   onOpenMuteMenu: (point: { x: number; y: number }) => void;
   onOpenHelp: () => void;
   onOpenMore: () => void;
@@ -28,9 +33,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   isUndoDisabled,
   isRedoDisabled,
   mutedCount,
+  isZoomInDisabled,
+  isZoomOutDisabled,
   onReset,
   onUndo,
   onRedo,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
   onOpenMuteMenu,
   onOpenHelp,
   onOpenMore,
@@ -104,6 +114,35 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <div className="hidden sm:flex items-center gap-1 mr-1">
+            <button
+              type="button"
+              onClick={onZoomOut}
+              disabled={isZoomOutDisabled}
+              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+              title="ズームアウト（100%まで）"
+            >
+              <ZoomOut className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+            </button>
+            <button
+              type="button"
+              onClick={onZoomReset}
+              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+              title="全体表示"
+              aria-label="全体表示"
+            >
+              <Scan className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+            </button>
+            <button
+              type="button"
+              onClick={onZoomIn}
+              disabled={isZoomInDisabled}
+              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+              title="ズームイン"
+            >
+              <ZoomIn className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+            </button>
+          </div>
           <button
             type="button"
             onClick={onUndo}
