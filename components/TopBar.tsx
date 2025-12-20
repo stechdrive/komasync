@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Scan, Undo2, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
-import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
+import { APP_NAME } from '@/domain/appMeta';
 
 type TopBarProps = {
   sheetNumber: number;
@@ -78,7 +78,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <div className="safe-area-top bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="h-[var(--topbar-h)] px-3 flex items-center justify-between gap-3">
+      <div className="min-h-[var(--topbar-h)] px-3 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -99,15 +99,13 @@ export const TopBar: React.FC<TopBarProps> = ({
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
 
-          <div className="min-w-0 flex items-baseline gap-2">
-            <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">
-              {APP_NAME} v{APP_VERSION}
-            </div>
-            <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">
-              シート {sheetNumber}
+          <div className="min-w-0 flex flex-col gap-0.5">
+            <div className="min-w-0 flex items-baseline gap-2">
+              <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
+              <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">シート {sheetNumber}</div>
             </div>
             <div className="font-mono text-[var(--ui-sm)] truncate min-w-0">
-              総 {totalTimecode}
+              {totalTimecode}
               {selectionTimecode ? ` / 選 ${selectionTimecode}` : ''}
             </div>
           </div>

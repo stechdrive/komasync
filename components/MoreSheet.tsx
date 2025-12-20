@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
 import { Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
+import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 import { getVadTuning, VadPreset } from '@/services/vad';
 import type { SileroVadError, SileroVadStatus } from '@/services/sileroVadEngine';
 
@@ -342,6 +343,10 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
               <div className="text-[11px] text-gray-500">
                 既存トラックを聞きながら録音する場合にON（遅延が気になる場合はOFF）
               </div>
+            </div>
+
+            <div className="pt-2 text-center text-[var(--ui-xs)] text-gray-400">
+              {APP_NAME} v{APP_VERSION}
             </div>
           </div>
         </div>
