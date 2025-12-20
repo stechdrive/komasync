@@ -81,6 +81,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
                 <li>タイムシート上で右クリック/長押しすると貼り付けメニューを開けます。</li>
                 <li>クリップボードがあれば「挿入」「上書き」で貼り付けます。</li>
                 <li>+1fボタンで無音フレームを挿入します。</li>
+                <li>-1fボタンで現在の行を削除して詰めます。</li>
               </ul>
             </section>
 

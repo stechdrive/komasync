@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Pause, Play, Plus, StopCircle } from 'lucide-react';
+import { Mic, Minus, Pause, Play, Plus, StopCircle } from 'lucide-react';
 import { RecordingState } from '@/types';
 
 type TransportDockProps = {
@@ -11,6 +11,7 @@ type TransportDockProps = {
   isAllTracks: boolean;
   onToggleAllTracks: () => void;
   onInsertOneFrame: () => void;
+  onDeleteOneFrame: () => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
   onPlay: () => void;
@@ -26,6 +27,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   isAllTracks,
   onToggleAllTracks,
   onInsertOneFrame,
+  onDeleteOneFrame,
   onStartRecording,
   onStopRecording,
   onPlay,
@@ -102,6 +104,20 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           title="全トラック"
         >
           全
+        </button>
+
+        <button
+          type="button"
+          disabled={isBusy || isRecording || isPlaying}
+          onClick={onDeleteOneFrame}
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
+            isBusy || isRecording || isPlaying
+              ? 'opacity-50 border-gray-200'
+              : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
+          }`}
+          title="-1f（削除）"
+        >
+          <Minus className="w-[var(--control-icon)] h-[var(--control-icon)]" />
         </button>
 
         <button

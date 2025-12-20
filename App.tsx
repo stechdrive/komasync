@@ -1405,6 +1405,43 @@ export default function App() {
     }
   };
 
+  const handleDeleteOneFrame = async () => {
+    if (recordingState === RecordingState.PLAYING) handlePause();
+
+    try {
+      saveToHistory();
+
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
+      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
+      const frameIndex = currentFrame;
+
+      const nextTracks = tracks.map((track) => {
+        if (!targetSet.has(track.id) || !track.audioBuffer) return track;
+        const newBuffer = deleteAudioRangeRipple(track.audioBuffer, frameIndex, frameIndex, FPS);
+        pendingVad.push({ id: track.id, buffer: newBuffer });
+        const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+        const nextOverrides = deleteOverrideRange(baseOverrides, frameIndex, frameIndex);
+        return {
+          ...track,
+          audioBuffer: newBuffer,
+          frames: createEmptyFrames(newBuffer),
+          speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+        };
+      });
+
+      setTracks(nextTracks);
+      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
+      setSelection(null);
+      const nextMaxFrames = Math.max(0, ...nextTracks.map((track) => track.frames.length));
+      setCurrentFrame((prev) => Math.min(prev, Math.max(0, nextMaxFrames - 1)));
+    } catch (error) {
+      console.error('Delete 1f failed:', error);
+      alert('-1f 削除に失敗しました。');
+    }
+  };
+
   // --- Playback Control ---
 
   const handlePlay = () => {
@@ -1770,6 +1807,7 @@ export default function App() {
           isAllTracks={editTarget === 'all'}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
+          onDeleteOneFrame={() => void handleDeleteOneFrame()}
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
           onPlay={handlePlay}
