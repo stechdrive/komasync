@@ -18,8 +18,8 @@ type TimesheetViewportProps = {
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
   onOpenContextMenu?: (point: { x: number; y: number }) => void;
+  onOpenSelectionMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
-  onSelectionEnd?: (range: SelectionRange | null, point: { x: number; y: number }) => void;
   onTrackSelect?: (trackId: string) => void;
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
@@ -44,8 +44,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onBackgroundClick,
   onFirstVisibleColumnChange,
   onOpenContextMenu,
+  onOpenSelectionMenu,
   onSelectionChange,
-  onSelectionEnd,
   onTrackSelect,
   onScrubStart,
   onScrubMove,
@@ -295,6 +295,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return frame;
   };
 
+  const isFrameInSelection = (frame: number): boolean => {
+    const range = selectionRangeRef.current;
+    if (!range) return false;
+    const start = Math.min(range.startFrame, range.endFrame);
+    const end = Math.max(range.startFrame, range.endFrame);
+    return frame >= start && frame <= end;
+  };
+
   const updatePointer = (e: React.PointerEvent) => {
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
   };
@@ -377,12 +385,17 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
   };
 
-  const startLongPressMenu = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'touch' || !onOpenContextMenu) return;
+  const startLongPressMenu = (e: React.PointerEvent, frame: number | null) => {
+    if (e.pointerType !== 'touch') return;
+    if (!onOpenContextMenu && !onOpenSelectionMenu) return;
     longPressPointRef.current = { x: e.clientX, y: e.clientY };
     clearLongPressTimer();
     longPressTimerRef.current = window.setTimeout(() => {
-      onOpenContextMenu({ x: e.clientX, y: e.clientY });
+      if (frame !== null && isFrameInSelection(frame) && onOpenSelectionMenu) {
+        onOpenSelectionMenu({ x: e.clientX, y: e.clientY });
+      } else if (onOpenContextMenu) {
+        onOpenContextMenu({ x: e.clientX, y: e.clientY });
+      }
       pendingTapRef.current = null;
       selectionAnchorRef.current = null;
       longPressPointRef.current = null;
@@ -395,9 +408,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, []);
 
   const handleContextMenu = (e: React.MouseEvent) => {
-    if (!onOpenContextMenu) return;
+    if (!onOpenContextMenu && !onOpenSelectionMenu) return;
     e.preventDefault();
-    onOpenContextMenu({ x: e.clientX, y: e.clientY });
+    const target = getTrackTarget(e.target);
+    if (target && isFrameInSelection(target.frame) && onOpenSelectionMenu) {
+      onOpenSelectionMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    onOpenContextMenu?.({ x: e.clientX, y: e.clientY });
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -475,13 +493,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           y: e.clientY,
         };
         selectionAnchorRef.current = target.frame;
-        startLongPressMenu(e);
+        startLongPressMenu(e, target.frame);
         return;
       }
       return;
     }
 
-    startLongPressMenu(e);
+    startLongPressMenu(e, null);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -701,10 +719,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
-      const selectionRange = selectionRangeRef.current;
-      if (selectionRange && onSelectionEnd) {
-        onSelectionEnd(selectionRange, { x: e.clientX, y: e.clientY });
-      }
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       return;
