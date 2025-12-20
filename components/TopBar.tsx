@@ -77,9 +77,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <div className="safe-area-top bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="min-h-[var(--topbar-h)] px-3 py-2 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="safe-area-top h-full bg-indigo-600 text-white border-b border-indigo-700/40">
+      <div className="h-full px-3 py-1 sm:py-2 flex flex-wrap items-center gap-1 sm:flex-nowrap sm:gap-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1 w-full sm:flex-none sm:w-auto">
           <button
             type="button"
             disabled={isResetDisabled}
@@ -99,19 +99,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
 
-          <div className="min-w-0 flex flex-col gap-0.5">
+          <div className="min-w-0 flex flex-col gap-0.5 leading-tight">
             <div className="min-w-0 flex items-baseline gap-2">
               <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
               <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">シート {sheetNumber}</div>
             </div>
-            <div className="font-mono text-[var(--ui-sm)] truncate min-w-0">
+            <div className="font-mono text-[var(--ui-xs)] sm:text-[var(--ui-sm)] truncate min-w-0">
               {totalTimecode}
               {selectionTimecode ? ` / 選 ${selectionTimecode}` : ''}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 w-full justify-end sm:w-auto">
           <div className="hidden sm:flex items-center gap-1 mr-1">
             <button
               type="button"

@@ -61,7 +61,7 @@ export const ClipboardMenu: React.FC<ClipboardMenuProps> = ({
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div
         ref={menuRef}
-        className="absolute min-w-[200px] rounded-xl border border-gray-200 bg-white shadow-xl"
+        className="absolute min-w-[200px] max-h-[calc(var(--app-height)-var(--topbar-h)-var(--dock-h))] rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden flex flex-col"
         style={{ left, top }}
         role="menu"
         onClick={(e) => e.stopPropagation()}
@@ -71,26 +71,26 @@ export const ClipboardMenu: React.FC<ClipboardMenuProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-10 h-10 -mr-2 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            className="w-[var(--control-size)] h-[var(--control-size)] -mr-2 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100"
             aria-label="閉じる"
           >
-            <X className="w-5 h-5" />
+            <X className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
         </div>
 
         {canPaste ? (
-          <div className="p-2 space-y-1">
+          <div className="p-2 space-y-1 overflow-y-auto min-h-0">
             <button
               type="button"
               onClick={handlePasteInsert}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50"
+              className="w-full flex items-center text-left px-3 py-2 min-h-[var(--control-size)] rounded-lg text-[var(--ui-sm)] text-gray-700 hover:bg-indigo-50"
             >
               貼り付け（挿入）
             </button>
             <button
               type="button"
               onClick={handlePasteOverwrite}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50"
+              className="w-full flex items-center text-left px-3 py-2 min-h-[var(--control-size)] rounded-lg text-[var(--ui-sm)] text-gray-700 hover:bg-indigo-50"
             >
               貼り付け（上書き）
             </button>
@@ -98,13 +98,13 @@ export const ClipboardMenu: React.FC<ClipboardMenuProps> = ({
             <button
               type="button"
               onClick={handleClearClipboard}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
+              className="w-full flex items-center text-left px-3 py-2 min-h-[var(--control-size)] rounded-lg text-[var(--ui-sm)] text-red-600 hover:bg-red-50"
             >
               クリップボードを消去
             </button>
           </div>
         ) : (
-          <div className="px-3 py-3 text-xs text-gray-500">クリップボードが空です。</div>
+          <div className="px-3 py-3 text-[var(--ui-xs)] text-gray-500">クリップボードが空です。</div>
         )}
       </div>
     </div>
