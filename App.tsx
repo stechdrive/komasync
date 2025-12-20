@@ -33,6 +33,12 @@ const SCRUB_FADE_SEC = 0.01;
 const SCRUB_THROTTLE_MS = 50;
 const MIC_SLEEP_MS = 5 * 60 * 1000;
 const MIC_SLEEP_CHECK_MS = 15 * 1000;
+const MIN_SHEET_ZOOM = 1;
+const MAX_SHEET_ZOOM = 3;
+const SHEET_ZOOM_STEP = 0.1;
+
+const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
+const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -89,6 +95,7 @@ export default function App() {
   const [isMicPreparing, setIsMicPreparing] = useState(false);
   const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
+  const [sheetZoom, setSheetZoom] = useState(1);
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
@@ -1225,6 +1232,22 @@ export default function App() {
     setSelection(range);
   };
 
+  const handleZoomIn = useCallback(() => {
+    setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setSheetZoom((prev) => normalizeSheetZoom(prev - SHEET_ZOOM_STEP));
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    setSheetZoom(1);
+  }, []);
+
+  const handleZoomChange = useCallback((value: number) => {
+    setSheetZoom(normalizeSheetZoom(value));
+  }, []);
+
   const handleScrubStart = (frame: number) => {
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
@@ -1331,6 +1354,8 @@ export default function App() {
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
   const mutedCount = tracks.filter((track) => track.isMuted).length;
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+  const isZoomOutDisabled = sheetZoom <= MIN_SHEET_ZOOM + 0.001;
+  const isZoomInDisabled = sheetZoom >= MAX_SHEET_ZOOM - 0.001;
 
   const targetLabel =
     editTarget === 'all' ? '全トラック' : tracks.find((t) => t.id === editTarget)?.name ?? `Track ${editTarget}`;
@@ -1350,9 +1375,14 @@ export default function App() {
           isUndoDisabled={historyPast.length === 0}
           isRedoDisabled={historyFuture.length === 0}
           mutedCount={mutedCount}
+          isZoomInDisabled={isZoomInDisabled}
+          isZoomOutDisabled={isZoomOutDisabled}
           onReset={handleResetProject}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
           onOpenMuteMenu={handleOpenMuteMenu}
           onOpenHelp={() => {
             setIsHelpOpen(true);
@@ -1393,6 +1423,9 @@ export default function App() {
         editTarget={editTarget}
         selection={selection}
         fps={FPS}
+        zoom={sheetZoom}
+        minZoom={MIN_SHEET_ZOOM}
+        maxZoom={MAX_SHEET_ZOOM}
         isAutoScrollActive={
           recordingState === RecordingState.PLAYING || recordingState === RecordingState.RECORDING
         }
@@ -1404,6 +1437,7 @@ export default function App() {
         onScrubStart={handleScrubStart}
         onScrubMove={handleScrubMove}
         onScrubEnd={handleScrubEnd}
+        onZoomChange={handleZoomChange}
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 

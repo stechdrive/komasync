@@ -10,6 +10,9 @@ type TimesheetViewportProps = {
   editTarget: EditTarget;
   selection: SelectionRange | null;
   fps: number;
+  zoom: number;
+  minZoom: number;
+  maxZoom: number;
   isAutoScrollActive: boolean;
   onFrameTap: (frame: number) => void;
   onBackgroundClick?: () => void;
@@ -20,6 +23,7 @@ type TimesheetViewportProps = {
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
   onScrubEnd?: () => void;
+  onZoomChange?: (zoom: number) => void;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -30,6 +34,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   editTarget,
   selection,
   fps,
+  zoom,
+  minZoom,
+  maxZoom,
   isAutoScrollActive,
   onFrameTap,
   onBackgroundClick,
@@ -40,6 +47,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onScrubStart,
   onScrubMove,
   onScrubEnd,
+  onZoomChange,
 }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFirstVisibleColRef = useRef<number | null>(null);
@@ -62,6 +70,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     y: number;
   } | null>(null);
   const isScrubbingRef = useRef(false);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStateRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  const isPinchingRef = useRef(false);
+  const zoomAnchorRef = useRef<{
+    clientX: number;
+    clientY: number;
+    contentX: number;
+    contentY: number;
+  } | null>(null);
+  const prevMetricsRef = useRef<{ columnWidth: number; rowHeight: number } | null>(null);
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -100,10 +118,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  const columnWidth = useMemo(() => {
+  const baseColumnWidth = useMemo(() => {
     if (viewportWidth <= 0) return 1;
-    return Math.max(1, Math.floor(viewportWidth / 2));
+    return Math.max(1, viewportWidth / 2);
   }, [viewportWidth]);
+
+  const columnWidth = useMemo(() => {
+    return Math.max(1, baseColumnWidth * zoom);
+  }, [baseColumnWidth, zoom]);
 
   const rulerWidth = useMemo(() => {
     return clamp(Math.round(columnWidth * 0.25), 36, 56);
@@ -111,8 +133,45 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const rowHeight = useMemo(() => {
     if (viewportHeight <= 0) return 0;
-    return viewportHeight / framesPerColumn;
-  }, [framesPerColumn, viewportHeight]);
+    return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
+  }, [framesPerColumn, viewportHeight, zoom]);
+
+  const columnHeight = useMemo(() => {
+    return framesPerColumn * rowHeight;
+  }, [framesPerColumn, rowHeight]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      prevMetricsRef.current = { columnWidth, rowHeight };
+      return;
+    }
+
+    const prev = prevMetricsRef.current;
+    prevMetricsRef.current = { columnWidth, rowHeight };
+    if (!prev || prev.columnWidth <= 0 || prev.rowHeight <= 0) return;
+    if (prev.columnWidth === columnWidth && prev.rowHeight === rowHeight) return;
+
+    const scaleX = columnWidth / prev.columnWidth;
+    const scaleY = rowHeight / prev.rowHeight;
+    const rect = el.getBoundingClientRect();
+    const anchor = zoomAnchorRef.current;
+
+    const centerX = el.scrollLeft + rect.width / 2;
+    const centerY = el.scrollTop + rect.height / 2;
+    const anchorContentX = anchor?.contentX ?? centerX;
+    const anchorContentY = anchor?.contentY ?? centerY;
+    const anchorClientX = anchor?.clientX ?? rect.left + rect.width / 2;
+    const anchorClientY = anchor?.clientY ?? rect.top + rect.height / 2;
+
+    const nextScrollLeft = anchorContentX * scaleX - (anchorClientX - rect.left);
+    const nextScrollTop = anchorContentY * scaleY - (anchorClientY - rect.top);
+
+    zoomAnchorRef.current = null;
+    requestAnimationFrame(() => {
+      el.scrollTo({ left: nextScrollLeft, top: nextScrollTop });
+    });
+  }, [columnWidth, rowHeight]);
 
   useEffect(() => {
     if (!isAutoScrollActive) {
@@ -205,6 +264,44 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return frame;
   };
 
+  const updatePointer = (e: React.PointerEvent) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  };
+
+  const removePointer = (pointerId: number) => {
+    activePointersRef.current.delete(pointerId);
+  };
+
+  const getPinchInfo = (): { distance: number; center: { x: number; y: number } } | null => {
+    const points = Array.from(activePointersRef.current.values());
+    if (points.length < 2) return null;
+    const [p1, p2] = points;
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    const distance = Math.hypot(dx, dy);
+    const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    return { distance, center };
+  };
+
+  const cancelPointerInteraction = () => {
+    clearLongPressTimer();
+    longPressPointRef.current = null;
+    pendingTapRef.current = null;
+    scrubPendingRef.current = null;
+    if (isScrubbingRef.current) onScrubEnd?.();
+    isScrubbingRef.current = false;
+    isSelectingRef.current = false;
+    selectionAnchorRef.current = null;
+    longPressActionRef.current = null;
+    longPressActiveRef.current = false;
+    longPressTargetRef.current = null;
+  };
+
+  const stopPinch = () => {
+    isPinchingRef.current = false;
+    pinchStateRef.current = null;
+  };
+
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
@@ -223,6 +320,19 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    updatePointer(e);
+    if (activePointersRef.current.size >= 2) {
+      if (!isPinchingRef.current && onZoomChange) {
+        const pinchInfo = getPinchInfo();
+        if (pinchInfo && pinchInfo.distance > 0) {
+          isPinchingRef.current = true;
+          pinchStateRef.current = { startDistance: pinchInfo.distance, startZoom: zoom };
+          cancelPointerInteraction();
+        }
+      }
+      return;
+    }
+
     const rulerTarget = getRulerTarget(e.target);
     const target = getTrackTarget(e.target);
     pendingTapRef.current = null;
@@ -286,6 +396,43 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (activePointersRef.current.has(e.pointerId)) {
+      updatePointer(e);
+    }
+
+    if (isPinchingRef.current) {
+      const pinchState = pinchStateRef.current;
+      const pinchInfo = getPinchInfo();
+      if (!pinchState || !pinchInfo || pinchState.startDistance <= 0) return;
+
+      const nextZoom = Math.min(
+        maxZoom,
+        Math.max(minZoom, pinchState.startZoom * (pinchInfo.distance / pinchState.startDistance))
+      );
+
+      if (Math.abs(nextZoom - zoom) < 0.0001) {
+        e.preventDefault();
+        return;
+      }
+
+      const el = scrollRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const contentX = el.scrollLeft + (pinchInfo.center.x - rect.left);
+        const contentY = el.scrollTop + (pinchInfo.center.y - rect.top);
+        zoomAnchorRef.current = {
+          clientX: pinchInfo.center.x,
+          clientY: pinchInfo.center.y,
+          contentX,
+          contentY,
+        };
+      }
+
+      onZoomChange?.(nextZoom);
+      e.preventDefault();
+      return;
+    }
+
     if (scrubPendingRef.current || isScrubbingRef.current) {
       const pending = scrubPendingRef.current;
       if (pending) {
@@ -373,6 +520,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    removePointer(e.pointerId);
+    if (isPinchingRef.current) {
+      if (activePointersRef.current.size < 2) {
+        stopPinch();
+      }
+      return;
+    }
+
     clearLongPressTimer();
     longPressPointRef.current = null;
     const pending = pendingTapRef.current;
@@ -423,24 +578,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     longPressActiveRef.current = false;
   };
 
-  const handlePointerCancel = () => {
-    clearLongPressTimer();
-    longPressPointRef.current = null;
-    pendingTapRef.current = null;
-    scrubPendingRef.current = null;
-    if (isScrubbingRef.current) onScrubEnd?.();
-    isScrubbingRef.current = false;
-    isSelectingRef.current = false;
-    selectionAnchorRef.current = null;
-    longPressActionRef.current = null;
-    longPressActiveRef.current = false;
+  const handlePointerCancel = (e: React.PointerEvent) => {
+    removePointer(e.pointerId);
+    if (isPinchingRef.current) {
+      if (activePointersRef.current.size < 2) {
+        stopPinch();
+      }
+      cancelPointerInteraction();
+      return;
+    }
+    cancelPointerInteraction();
   };
 
   return (
     <div className="h-full w-full bg-gray-100 select-none">
       <div
         ref={scrollRef}
-        className="h-full w-full overflow-x-auto overflow-y-hidden snap-x snap-proximity overscroll-x-contain cursor-default"
+        className="h-full w-full overflow-x-auto overflow-y-auto snap-x snap-proximity overscroll-x-contain overscroll-y-contain cursor-default"
         onClick={handleBackdropClick}
         onContextMenu={handleContextMenu}
         onPointerDown={handlePointerDown}
@@ -448,9 +602,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerCancel}
+        style={{ touchAction: 'pan-x pan-y' }}
       >
-        <div className="h-full flex" style={{ width: `${totalColumns * columnWidth}px` }}>
-          {leftSpacerWidth > 0 && <div className="shrink-0 h-full" style={{ width: `${leftSpacerWidth}px` }} />}
+        <div className="flex" style={{ width: `${totalColumns * columnWidth}px`, height: `${columnHeight}px` }}>
+          {leftSpacerWidth > 0 && (
+            <div className="shrink-0" style={{ width: `${leftSpacerWidth}px`, height: `${columnHeight}px` }} />
+          )}
 
           {visibleColumnIndices.map((columnIndex) => (
             <TimesheetColumn
@@ -464,12 +621,15 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
               selection={selection}
               maxFrames={maxFrames}
               columnWidth={columnWidth}
+              columnHeight={columnHeight}
               rulerWidth={rulerWidth}
               rowHeight={rowHeight}
             />
           ))}
 
-          {rightSpacerWidth > 0 && <div className="shrink-0 h-full" style={{ width: `${rightSpacerWidth}px` }} />}
+          {rightSpacerWidth > 0 && (
+            <div className="shrink-0" style={{ width: `${rightSpacerWidth}px`, height: `${columnHeight}px` }} />
+          )}
         </div>
       </div>
     </div>
