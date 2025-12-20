@@ -10,7 +10,7 @@ import {
 } from './services/audioEdit';
 import { exportTracksToZip } from './services/audioExporter';
 import { getVadTuning, VadPreset, VadTuning } from './services/vad';
-import { analyzeAudioBufferWithVadEngine } from './services/vadEngine';
+import { analyzeAudioBufferWithSileroVadEngine } from './services/sileroVadEngine';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
@@ -183,7 +183,7 @@ export default function App() {
   const scheduleVadAnalysis = useCallback((trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning) => {
     const bufferRef = audioBuffer;
     const tuningToken = vadReprocessIdRef.current;
-    void analyzeAudioBufferWithVadEngine(bufferRef, FPS, tuning)
+    void analyzeAudioBufferWithSileroVadEngine(bufferRef, FPS, tuning)
       .then((frames) => {
         if (vadReprocessIdRef.current !== tuningToken) return;
         setTracks((prev) =>
@@ -211,7 +211,7 @@ export default function App() {
         snapshot.map(async (track) => {
           if (!track.audioBuffer) return null;
           try {
-            const frames = await analyzeAudioBufferWithVadEngine(track.audioBuffer, FPS, tuning);
+            const frames = await analyzeAudioBufferWithSileroVadEngine(track.audioBuffer, FPS, tuning);
             return { id: track.id, buffer: track.audioBuffer, frames };
           } catch (error) {
             console.warn('VAD解析に失敗しました。', error);
