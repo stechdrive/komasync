@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Scissors, Trash2, X } from 'lucide-react';
+import { RotateCcw, Scissors, Tag, TagOff, Trash2, X } from 'lucide-react';
 
 type EditPaletteProps = {
   selectionCount: number;
@@ -8,6 +8,9 @@ type EditPaletteProps = {
   onCut: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
+  onMarkSpeech: () => void;
+  onMarkNonSpeech: () => void;
+  onResetSpeechLabel: () => void;
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
@@ -19,6 +22,9 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   onCut,
   onDelete,
   onClearSelection,
+  onMarkSpeech,
+  onMarkNonSpeech,
+  onResetSpeechLabel,
 }) => {
   const showSelectionActions = selectionCount > 0;
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -84,6 +90,33 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
               >
                 <Trash2 className="w-4 h-4" /> 削除
               </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">セリフラベル</div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={onMarkSpeech}
+                  className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-2 rounded-lg text-[var(--ui-xs)] font-bold shadow-sm"
+                >
+                  <Tag className="w-3.5 h-3.5" /> セリフ
+                </button>
+                <button
+                  type="button"
+                  onClick={onMarkNonSpeech}
+                  className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-2 rounded-lg text-[var(--ui-xs)] font-bold"
+                >
+                  <TagOff className="w-3.5 h-3.5" /> 解除
+                </button>
+                <button
+                  type="button"
+                  onClick={onResetSpeechLabel}
+                  className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-white hover:bg-blue-50 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> 自動
+                </button>
+              </div>
             </div>
           </div>
         )}

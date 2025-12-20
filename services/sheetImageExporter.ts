@@ -3,6 +3,7 @@ import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { formatTimecode } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
+import { getEffectiveSpeech } from '@/services/speechLabels';
 
 type ExportScope = { type: 'all' } | { type: 'sheet'; sheetIndex: number };
 
@@ -205,7 +206,7 @@ const drawSheetToCanvas = (
           continue;
         }
 
-        const isSpeech = Boolean(track.frames[globalFrameIndex]?.isSpeech);
+        const isSpeech = getEffectiveSpeech(track, globalFrameIndex);
         if (!isSpeech) continue;
 
         const color = getTrackTheme(track.id).accentHex;

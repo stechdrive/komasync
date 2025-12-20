@@ -8,5 +8,5 @@ export type SelectionRange = {
 export type ClipboardClip = {
   kind: 'single' | 'all';
   byTrackId: Record<string, AudioBuffer>;
+  speechOverridesByTrackId: Record<string, number[]>;
 };
-

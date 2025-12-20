@@ -20,6 +20,16 @@ import {
 import type { SileroVadError, SileroVadStatus } from './services/sileroVadEngine';
 import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { computeVadAutoTuning } from './services/vadAutoTuner';
+import {
+  applyOverrideRange,
+  clearOverrideRange,
+  createSpeechOverrides,
+  deleteOverrideRange,
+  extractOverrideRange,
+  insertOverrideRange,
+  overwriteOverrideRange,
+  resizeSpeechOverrides,
+} from './services/speechLabels';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
 import { ClipboardMenu } from './components/ClipboardMenu';
@@ -53,9 +63,36 @@ const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
-  { id: '1', name: 'Track 1', color: 'blue', audioBuffer: null, frames: [], isVisible: true, isMuted: false },
-  { id: '2', name: 'Track 2', color: 'red', audioBuffer: null, frames: [], isVisible: true, isMuted: false },
-  { id: '3', name: 'Track 3', color: 'green', audioBuffer: null, frames: [], isVisible: true, isMuted: false },
+  {
+    id: '1',
+    name: 'Track 1',
+    color: 'blue',
+    audioBuffer: null,
+    frames: [],
+    speechOverrides: [],
+    isVisible: true,
+    isMuted: false,
+  },
+  {
+    id: '2',
+    name: 'Track 2',
+    color: 'red',
+    audioBuffer: null,
+    frames: [],
+    speechOverrides: [],
+    isVisible: true,
+    isMuted: false,
+  },
+  {
+    id: '3',
+    name: 'Track 3',
+    color: 'green',
+    audioBuffer: null,
+    frames: [],
+    speechOverrides: [],
+    isVisible: true,
+    isMuted: false,
+  },
 ];
 
 type HistoryEntry =
@@ -247,6 +284,16 @@ export default function App() {
     return frames;
   }, []);
 
+  const getFrameCountFromBuffer = useCallback((audioBuffer: AudioBuffer | null): number => {
+    if (!audioBuffer) return 0;
+    return Math.floor((audioBuffer.length * FPS) / audioBuffer.sampleRate);
+  }, []);
+
+  const createSpeechOverridesForBuffer = useCallback(
+    (audioBuffer: AudioBuffer | null): number[] => createSpeechOverrides(getFrameCountFromBuffer(audioBuffer)),
+    [getFrameCountFromBuffer]
+  );
+
   const scheduleVadAnalysis = useCallback((trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning) => {
     const bufferRef = audioBuffer;
     const tuningToken = vadReprocessIdRef.current;
@@ -257,7 +304,14 @@ export default function App() {
         if (vadReprocessIdRef.current !== tuningToken) return;
         if (vadRequestIdRef.current.get(trackId) !== requestId) return;
         setTracks((prev) =>
-          prev.map((track) => (track.id === trackId ? { ...track, frames } : track))
+          prev.map((track) => {
+            if (track.id !== trackId) return track;
+            return {
+              ...track,
+              frames,
+              speechOverrides: resizeSpeechOverrides(track.speechOverrides, frames.length),
+            };
+          })
         );
       })
       .catch((error) => {
@@ -298,10 +352,14 @@ export default function App() {
 
       setTracks((prevTracks) =>
         prevTracks.map((track) => {
-          if (!track.audioBuffer) return { ...track, frames: [] };
+          if (!track.audioBuffer) return { ...track, frames: [], speechOverrides: [] };
           const match = resultMap.get(track.id);
           if (match && match.buffer === track.audioBuffer) {
-            return { ...track, frames: match.frames };
+            return {
+              ...track,
+              frames: match.frames,
+              speechOverrides: resizeSpeechOverrides(track.speechOverrides, match.frames.length),
+            };
           }
           return track;
         })
@@ -394,7 +452,13 @@ export default function App() {
     if (previous.kind === 'tracks') {
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
       const nextTracks = previous.tracks.map((track) =>
-        track.audioBuffer ? { ...track, frames: createEmptyFrames(track.audioBuffer) } : { ...track, frames: [] }
+        track.audioBuffer
+          ? {
+              ...track,
+              frames: createEmptyFrames(track.audioBuffer),
+              speechOverrides: resizeSpeechOverrides(track.speechOverrides, getFrameCountFromBuffer(track.audioBuffer)),
+            }
+          : { ...track, frames: [], speechOverrides: [] }
       );
       setTracks(nextTracks);
       // Reset selection to avoid ghost selections
@@ -433,7 +497,13 @@ export default function App() {
     if (next.kind === 'tracks') {
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
       const nextTracks = next.tracks.map((track) =>
-        track.audioBuffer ? { ...track, frames: createEmptyFrames(track.audioBuffer) } : { ...track, frames: [] }
+        track.audioBuffer
+          ? {
+              ...track,
+              frames: createEmptyFrames(track.audioBuffer),
+              speechOverrides: resizeSpeechOverrides(track.speechOverrides, getFrameCountFromBuffer(track.audioBuffer)),
+            }
+          : { ...track, frames: [], speechOverrides: [] }
       );
       setTracks(nextTracks);
       setSelection(null);
@@ -888,9 +958,23 @@ export default function App() {
       }
 
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const clipFrames = getFrameCountFromBuffer(newClipBuffer);
+      const nextOverrides = (() => {
+        if (!track || !track.audioBuffer) {
+          return createSpeechOverridesForBuffer(finalBuffer);
+        }
+        const baseOverrides = resizeSpeechOverrides(
+          track.speechOverrides,
+          getFrameCountFromBuffer(track.audioBuffer)
+        );
+        const clearedSlice = createSpeechOverrides(clipFrames);
+        const overwritten = overwriteOverrideRange(baseOverrides, insertAtFrame, clearedSlice);
+        return resizeSpeechOverrides(overwritten, getFrameCountFromBuffer(finalBuffer));
+      })();
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
         frames: createEmptyFrames(finalBuffer),
+        speechOverrides: nextOverrides,
       });
       scheduleVadAnalysis(trackId, finalBuffer, tuning);
 
@@ -951,6 +1035,7 @@ export default function App() {
       const nextClipboard: ClipboardClip = {
         kind: editTarget === 'all' ? 'all' : 'single',
         byTrackId: {},
+        speechOverridesByTrackId: {},
       };
 
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
@@ -959,10 +1044,22 @@ export default function App() {
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
 
-        nextClipboard.byTrackId[track.id] = extractAudioRangePadded(track.audioBuffer, range.startFrame, range.endFrame, FPS, {
-          sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
-          numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
-        });
+        nextClipboard.byTrackId[track.id] = extractAudioRangePadded(
+          track.audioBuffer,
+          range.startFrame,
+          range.endFrame,
+          FPS,
+          {
+            sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
+            numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
+          }
+        );
+        const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+        nextClipboard.speechOverridesByTrackId[track.id] = extractOverrideRange(
+          baseOverrides,
+          range.startFrame,
+          range.endFrame
+        );
 
         if (!track.audioBuffer) return track;
 
@@ -972,6 +1069,7 @@ export default function App() {
           ...track,
           audioBuffer: newBuffer,
           frames: createEmptyFrames(newBuffer),
+          speechOverrides: clearOverrideRange(baseOverrides, range.startFrame, range.endFrame),
         };
       });
 
@@ -1004,7 +1102,14 @@ export default function App() {
 
         const newBuffer = deleteAudioRangeRipple(track.audioBuffer, range.startFrame, range.endFrame, FPS);
         pendingVad.push({ id: track.id, buffer: newBuffer });
-        return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+        const nextOverrides = deleteOverrideRange(baseOverrides, range.startFrame, range.endFrame);
+        return {
+          ...track,
+          audioBuffer: newBuffer,
+          frames: createEmptyFrames(newBuffer),
+          speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+        };
       });
 
       setTracks(nextTracks);
@@ -1040,9 +1145,21 @@ export default function App() {
         const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
         const nextTracks = tracks.map((track) => {
           const clip = clipboardClip.byTrackId[track.id];
+          const clipFrameCount = getFrameCountFromBuffer(clip);
+          const overrideSlice = resizeSpeechOverrides(
+            clipboardClip.speechOverridesByTrackId[track.id] ?? createSpeechOverrides(clipFrameCount),
+            clipFrameCount
+          );
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
           pendingVad.push({ id: track.id, buffer: newBuffer });
-          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+          const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          return {
+            ...track,
+            audioBuffer: newBuffer,
+            frames: createEmptyFrames(newBuffer),
+            speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+          };
         });
         setTracks(nextTracks);
         pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
@@ -1055,8 +1172,20 @@ export default function App() {
 
         const nextTracks = tracks.map((track) => {
           if (track.id !== editTarget) return track;
+          const clipFrameCount = getFrameCountFromBuffer(clip);
+          const overrideSlice = resizeSpeechOverrides(
+            clipboardClip.speechOverridesByTrackId[editTarget] ?? createSpeechOverrides(clipFrameCount),
+            clipFrameCount
+          );
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+          const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          return {
+            ...track,
+            audioBuffer: newBuffer,
+            frames: createEmptyFrames(newBuffer),
+            speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+          };
         });
         setTracks(nextTracks);
         const updatedTrack = nextTracks.find((track) => track.id === editTarget);
@@ -1095,9 +1224,21 @@ export default function App() {
         const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
         const nextTracks = tracks.map((track) => {
           const clip = clipboardClip.byTrackId[track.id];
+          const clipFrameCount = getFrameCountFromBuffer(clip);
+          const overrideSlice = resizeSpeechOverrides(
+            clipboardClip.speechOverridesByTrackId[track.id] ?? createSpeechOverrides(clipFrameCount),
+            clipFrameCount
+          );
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
           pendingVad.push({ id: track.id, buffer: newBuffer });
-          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+          const nextOverrides = overwriteOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          return {
+            ...track,
+            audioBuffer: newBuffer,
+            frames: createEmptyFrames(newBuffer),
+            speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+          };
         });
         setTracks(nextTracks);
         pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
@@ -1110,8 +1251,20 @@ export default function App() {
 
         const nextTracks = tracks.map((track) => {
           if (track.id !== editTarget) return track;
+          const clipFrameCount = getFrameCountFromBuffer(clip);
+          const overrideSlice = resizeSpeechOverrides(
+            clipboardClip.speechOverridesByTrackId[editTarget] ?? createSpeechOverrides(clipFrameCount),
+            clipFrameCount
+          );
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-          return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+          const nextOverrides = overwriteOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          return {
+            ...track,
+            audioBuffer: newBuffer,
+            frames: createEmptyFrames(newBuffer),
+            speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+          };
         });
         setTracks(nextTracks);
         const updatedTrack = nextTracks.find((track) => track.id === editTarget);
@@ -1147,7 +1300,14 @@ export default function App() {
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
         pendingVad.push({ id: track.id, buffer: newBuffer });
-        return { ...track, audioBuffer: newBuffer, frames: createEmptyFrames(newBuffer) };
+        const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+        const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, createSpeechOverrides(1));
+        return {
+          ...track,
+          audioBuffer: newBuffer,
+          frames: createEmptyFrames(newBuffer),
+          speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+        };
       });
 
       setTracks(nextTracks);
@@ -1320,6 +1480,39 @@ export default function App() {
     },
     []
   );
+
+  const applySpeechOverrideToSelection = useCallback(
+    (value: number) => {
+      const range = getNormalizedSelection();
+      if (!range) return;
+      saveToHistory();
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
+      setTracks((prev) =>
+        prev.map((track) => {
+          if (!targetSet.has(track.id)) return track;
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+          return {
+            ...track,
+            speechOverrides: applyOverrideRange(baseOverrides, range.startFrame, range.endFrame, value),
+          };
+        })
+      );
+    },
+    [editTarget, getNormalizedSelection, saveToHistory, tracks]
+  );
+
+  const handleMarkSpeech = useCallback(() => {
+    applySpeechOverrideToSelection(1);
+  }, [applySpeechOverrideToSelection]);
+
+  const handleMarkNonSpeech = useCallback(() => {
+    applySpeechOverrideToSelection(-1);
+  }, [applySpeechOverrideToSelection]);
+
+  const handleResetSpeechLabel = useCallback(() => {
+    applySpeechOverrideToSelection(0);
+  }, [applySpeechOverrideToSelection]);
 
   const handleZoomIn = useCallback(() => {
     setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
@@ -1538,6 +1731,9 @@ export default function App() {
           setSelectionMenu(null);
           void handleDeleteSelection();
         }}
+        onMarkSpeech={handleMarkSpeech}
+        onMarkNonSpeech={handleMarkNonSpeech}
+        onResetSpeechLabel={handleResetSpeechLabel}
         onClearSelection={() => {
           setSelection(null);
           setSelectionMenu(null);
