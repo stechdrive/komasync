@@ -18,6 +18,7 @@ type TransportDockProps = {
   onStopRecording: () => void;
   onPlay: () => void;
   onPause: () => void;
+  onCommitVadThresholdScale: () => void;
 };
 
 export const TransportDock: React.FC<TransportDockProps> = ({
@@ -36,6 +37,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   onStopRecording,
   onPlay,
   onPause,
+  onCommitVadThresholdScale,
 }) => {
   const isRecording = recordingState === RecordingState.RECORDING;
   const isPlaying = recordingState === RecordingState.PLAYING;
@@ -55,12 +57,12 @@ export const TransportDock: React.FC<TransportDockProps> = ({
 
   return (
     <div className="safe-area-bottom bg-white border-t border-gray-200">
-      <div className="px-3 pt-2 pb-2 flex items-center gap-2">
+      <div className="px-3 pt-2 pb-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={!canRecordToggle}
           onClick={isRecording ? onStopRecording : onStartRecording}
-          className={`flex-1 h-14 sm:h-12 rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
+          className={`flex-1 h-[var(--record-h)] rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
             isRecording
               ? 'border-red-500 bg-red-50 text-red-600'
               : isPreparing
@@ -68,12 +70,16 @@ export const TransportDock: React.FC<TransportDockProps> = ({
                 : 'border-gray-200 bg-white text-gray-700'
           } ${!canRecordToggle ? 'opacity-50' : 'hover:border-indigo-400 hover:bg-indigo-50'}`}
         >
-          {isRecording ? <StopCircle className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          {isRecording ? (
+            <StopCircle className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+          ) : (
+            <Mic className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+          )}
           <div className="flex flex-col items-start leading-none">
-            <div className="text-sm">
+            <div className="text-[var(--ui-sm)]">
               {isRecording ? '停止' : isPreparing ? '準備中…' : isBusy ? '処理中…' : '録音'}
             </div>
-            <div className="text-xs sm:text-[10px] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
+            <div className="text-[var(--ui-xs)] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
               <span className={`inline-block w-2 h-2 rounded-full ${micDotClass}`} />
               REC T{recordTrackId}
             </div>
@@ -84,18 +90,22 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canPlayToggle}
           onClick={isPlaying ? onPause : onPlay}
-          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors ${
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             canPlayToggle ? 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700' : 'opacity-50 border-gray-200'
           }`}
           title={isPlaying ? '一時停止' : '再生'}
         >
-          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          {isPlaying ? (
+            <Pause className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+          ) : (
+            <Play className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+          )}
         </button>
 
-        <div className="h-14 sm:h-12 w-[110px] sm:w-[92px] rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
-          <div className="flex items-center justify-between text-[9px] text-gray-500 leading-none">
+        <div className="h-[var(--control-size)] w-full sm:w-[var(--control-wide)] order-2 sm:order-none rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
+          <div className="flex items-center justify-between text-[var(--ui-xs)] text-gray-500 leading-none">
             <span>閾値</span>
-            <span className="font-mono text-[9px]">{vadThresholdValue.toFixed(3)}</span>
+            <span className="font-mono text-[var(--ui-xs)]">{vadThresholdValue.toFixed(3)}</span>
           </div>
           <input
             type="range"
@@ -104,6 +114,9 @@ export const TransportDock: React.FC<TransportDockProps> = ({
             step="1"
             value={thresholdPercent}
             onChange={(e) => onChangeVadThresholdScale(parseInt(e.target.value, 10) / 100)}
+            onPointerUp={onCommitVadThresholdScale}
+            onPointerCancel={onCommitVadThresholdScale}
+            onBlur={onCommitVadThresholdScale}
             className="mt-1 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             aria-label="音声検出の閾値"
           />
@@ -112,7 +125,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         <button
           type="button"
           onClick={onToggleAllTracks}
-          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors font-bold ${
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
             isAllTracks ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
           }`}
           title="全トラック"
@@ -124,14 +137,14 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={isBusy || isRecording || isPlaying}
           onClick={onInsertOneFrame}
-          className={`w-14 h-14 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-colors ${
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             isBusy || isRecording || isPlaying
               ? 'opacity-50 border-gray-200'
               : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
           }`}
           title="+1f（無音挿入）"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-[var(--control-icon)] h-[var(--control-icon)]" />
         </button>
       </div>
 
