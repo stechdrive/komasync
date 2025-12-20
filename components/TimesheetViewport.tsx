@@ -97,7 +97,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const ua = navigator.userAgent;
     return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
   }, []);
-  const touchActionValue: React.CSSProperties['touchAction'] = isIOS ? 'pan-x pan-y' : 'none';
+  const isZoomed = zoom > 1;
+  const allowSingleFingerPan = !isIOS && !isZoomed;
+  const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
 
   useEffect(() => {
     selectionRangeRef.current = selection;
@@ -331,7 +333,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const startPan = (e: React.PointerEvent) => {
-    if (isIOS) return;
+    if (!allowSingleFingerPan) return;
     const el = scrollRef.current;
     if (!el) return;
     isPanningRef.current = true;
@@ -350,7 +352,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const updatePan = (e: React.PointerEvent) => {
-    if (isIOS) return;
+    if (!allowSingleFingerPan) return;
     if (!isPanningRef.current || panPointerIdRef.current !== e.pointerId) return;
     const el = scrollRef.current;
     const start = panStartRef.current;
@@ -363,7 +365,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const stopPan = () => {
-    if (isIOS) return;
     isPanningRef.current = false;
     panPointerIdRef.current = null;
     panStartRef.current = null;
@@ -402,7 +403,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const handlePointerDown = (e: React.PointerEvent) => {
     updatePointer(e);
     const scrollEl = scrollRef.current;
-    if (!isIOS && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
+    if (allowSingleFingerPan && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
       scrollEl.setPointerCapture(e.pointerId);
       panStartRef.current = {
         x: e.clientX,
@@ -539,7 +540,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (isPanningRef.current && panPointerIdRef.current === e.pointerId) {
-      updatePan(e);
+      if (!allowSingleFingerPan) {
+        stopPan();
+      } else {
+        updatePan(e);
+      }
       return;
     }
 
@@ -550,19 +555,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         const dy = e.clientY - pending.y;
         const distance = Math.hypot(dx, dy);
         if (distance < 4) return;
-      if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx)) {
-        if (!isIOS) {
+        if (e.pointerType === 'touch' && Math.abs(dy) < Math.abs(dx) && allowSingleFingerPan) {
           startPan(e);
           updatePan(e);
-        } else {
-          scrubPendingRef.current = null;
-          pendingTapRef.current = null;
-          selectionAnchorRef.current = null;
-          clearLongPressTimer();
-          longPressPointRef.current = null;
+          return;
         }
-        return;
-      }
 
         isScrubbingRef.current = true;
         scrubPendingRef.current = null;
@@ -602,16 +599,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const dx = e.clientX - pendingTouch.x;
       const dy = e.clientY - pendingTouch.y;
       if (Math.hypot(dx, dy) > 6) {
-        if (Math.abs(dx) > Math.abs(dy)) {
-          if (!isIOS) {
-            startPan(e);
-            updatePan(e);
-          } else {
-            pendingTapRef.current = null;
-            selectionAnchorRef.current = null;
-            clearLongPressTimer();
-            longPressPointRef.current = null;
-          }
+        if (Math.abs(dx) > Math.abs(dy) && allowSingleFingerPan) {
+          startPan(e);
+          updatePan(e);
           return;
         }
         isSelectingRef.current = true;
@@ -635,7 +625,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (
-      !isIOS &&
+      allowSingleFingerPan &&
       e.pointerType !== 'mouse' &&
       !pendingTapRef.current &&
       !scrubPendingRef.current &&
