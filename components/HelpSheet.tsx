@@ -53,8 +53,9 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             <section className="space-y-2">
               <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">ズーム</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>スマホはピンチ操作でシートを拡大できます。</li>
-                <li>PCは上部バーのズームイン/全体表示ボタンで調整します。</li>
+                <li>上部バーのズームイン/ズームアウト/全体表示で調整します。</li>
+                <li>スマホはピンチ操作でもシートを拡大できます。</li>
+                <li>ズーム中のスクロールは2本指で行います。</li>
                 <li>全体表示は100%の基準表示です。</li>
               </ul>
             </section>
