@@ -1,8 +1,5 @@
 import { FrameData } from '@/types';
 import { VadTuning } from '@/services/vad';
-import wasmUrl from 'onnxruntime-web/dist/ort-wasm.wasm?url';
-import wasmSimdUrl from 'onnxruntime-web/dist/ort-wasm-simd.wasm?url';
-
 type VadWorkerRequest = {
   id: number;
   samples: Float32Array;
@@ -118,10 +115,8 @@ const ensureSession = async (baseUrl: string): Promise<SileroSessionInfo> => {
     sessionBaseUrl = resolvedBase;
     sessionPromise = (async () => {
       const ort = (await import('onnxruntime-web')) as OrtModule;
-      ort.env.wasm.wasmPaths = {
-        'ort-wasm.wasm': wasmUrl,
-        'ort-wasm-simd.wasm': wasmSimdUrl,
-      };
+      const wasmBaseUrl = new URL('onnxruntime/', resolvedBase).toString();
+      ort.env.wasm.wasmPaths = wasmBaseUrl;
       ort.env.wasm.numThreads = 1;
 
       const modelUrl = new URL('models/silero_vad.onnx', resolvedBase).toString();

@@ -55,6 +55,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 Source repository: https://github.com/microsoft/onnxruntime
 License: MIT
+Bundled files: `public/onnxruntime/ort-wasm-simd-threaded.mjs`, `public/onnxruntime/ort-wasm-simd-threaded.wasm`
 
 MIT License
 
