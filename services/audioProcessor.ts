@@ -1,6 +1,10 @@
 import { FrameData } from '../types';
 import { frameToSampleIndex } from './audioEdit';
 
+type WindowWithWebkitAudioContext = Window & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
 export const processAudioBuffer = (
   audioBuffer: AudioBuffer,
   threshold: number,
@@ -53,7 +57,7 @@ export const blobToAudioBuffer = async (blob: Blob): Promise<AudioBuffer> => {
   }
 
   // Create a temporary context just for decoding
-  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  const AudioContextClass = window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
   if (!AudioContextClass) {
       throw new Error("AudioContext is not supported");
   }
@@ -64,11 +68,11 @@ export const blobToAudioBuffer = async (blob: Blob): Promise<AudioBuffer> => {
     return await new Promise<AudioBuffer>((resolve, reject) => {
       let settled = false;
       const doResolve = (buf: AudioBuffer) => { if (!settled) { settled = true; resolve(buf); } };
-      const doReject = (err: any) => { 
+      const doReject = (err: unknown) => { 
           if (!settled) { 
               settled = true; 
               // Extract meaningful error message
-              const msg = err instanceof DOMException ? err.message : (err?.message || String(err));
+              const msg = err instanceof DOMException ? err.message : err instanceof Error ? err.message : String(err);
               reject(new Error(`Decode error: ${msg}`)); 
           } 
       };

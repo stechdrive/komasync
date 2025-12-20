@@ -93,9 +93,9 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   onCommitVadThresholdScale,
   onTogglePlayWhileRecording,
 }) => {
+  const [isVadDetailsOpen, setIsVadDetailsOpen] = useState(false);
   if (!isOpen) return null;
 
-  const [isVadDetailsOpen, setIsVadDetailsOpen] = useState(false);
   const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? `Track ${recordTrackId}`;
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const stabilityPercent = Math.round(vadStability * 100);
