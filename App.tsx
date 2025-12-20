@@ -32,7 +32,6 @@ import {
 } from './services/speechLabels';
 import { TimesheetViewport } from './components/TimesheetViewport';
 import { HelpSheet } from './components/HelpSheet';
-import { ClipboardMenu } from './components/ClipboardMenu';
 import { TrackMuteMenu } from './components/TrackMuteMenu';
 import { AppShell } from './components/AppShell';
 import { EditPalette } from './components/EditPalette';
@@ -160,7 +159,6 @@ export default function App() {
 
   // Clipboard State
   const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
-  const [clipboardMenu, setClipboardMenu] = useState<{ x: number; y: number } | null>(null);
   const [muteMenu, setMuteMenu] = useState<{ x: number; y: number } | null>(null);
 
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -607,15 +605,6 @@ export default function App() {
   const handleBackgroundClick = () => {
     setSelection(null);
   };
-
-  const handleOpenClipboardMenu = useCallback((point: { x: number; y: number }) => {
-    setSelectionMenu(null);
-    setClipboardMenu(point);
-  }, []);
-
-  const handleCloseClipboardMenu = useCallback(() => {
-    setClipboardMenu(null);
-  }, []);
 
   const handleOpenMuteMenu = useCallback((point: { x: number; y: number }) => {
     setMuteMenu(point);
@@ -1597,7 +1586,6 @@ export default function App() {
   };
 
   const handleOpenSelectionMenu = useCallback((point: { x: number; y: number }) => {
-    setClipboardMenu(null);
     setSelectionMenu(point);
   }, []);
 
@@ -1829,7 +1817,6 @@ export default function App() {
         }
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
-        onOpenContextMenu={handleOpenClipboardMenu}
         onOpenSelectionMenu={handleOpenSelectionMenu}
         onSelectionChange={handleSelectionChange}
         onTrackSelect={handleTrackSelect}
@@ -1840,18 +1827,31 @@ export default function App() {
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
-        <EditPalette
-          selectionCount={selectionCount}
-          targetLabel={targetLabel}
-          anchor={selectionMenu}
-          onClose={() => setSelectionMenu(null)}
-          onCut={() => {
-            setSelectionMenu(null);
-            void handleCut();
-          }}
+      <EditPalette
+        selectionCount={selectionCount}
+        targetLabel={targetLabel}
+        anchor={selectionMenu}
+        hasClipboard={clipboardClip !== null}
+        onClose={() => setSelectionMenu(null)}
+        onCut={() => {
+          setSelectionMenu(null);
+          void handleCut();
+        }}
         onDelete={() => {
           setSelectionMenu(null);
           void handleDeleteSelection();
+        }}
+        onPasteInsert={() => {
+          setSelectionMenu(null);
+          void handlePasteInsert();
+        }}
+        onPasteOverwrite={() => {
+          setSelectionMenu(null);
+          void handlePasteOverwrite();
+        }}
+        onClearClipboard={() => {
+          setSelectionMenu(null);
+          setClipboardClip(null);
         }}
         onMarkSpeech={handleMarkSpeech}
         onMarkNonSpeech={handleMarkNonSpeech}
@@ -1895,16 +1895,6 @@ export default function App() {
         tracks={tracks}
         onToggleTrack={toggleTrackMute}
         onClose={handleCloseMuteMenu}
-      />
-
-      <ClipboardMenu
-        isOpen={clipboardMenu !== null}
-        position={clipboardMenu}
-        canPaste={clipboardClip !== null}
-        onPasteInsert={() => void handlePasteInsert()}
-        onPasteOverwrite={() => void handlePasteOverwrite()}
-        onClearClipboard={() => setClipboardClip(null)}
-        onClose={handleCloseClipboardMenu}
       />
     </AppShell>
   );

@@ -5,8 +5,12 @@ type EditPaletteProps = {
   selectionCount: number;
   targetLabel: string;
   anchor: { x: number; y: number } | null;
+  hasClipboard: boolean;
   onCut: () => void;
   onDelete: () => void;
+  onPasteInsert: () => void;
+  onPasteOverwrite: () => void;
+  onClearClipboard: () => void;
   onClearSelection: () => void;
   onClose: () => void;
   onMarkSpeech: () => void;
@@ -20,8 +24,12 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   selectionCount,
   targetLabel,
   anchor,
+  hasClipboard,
   onCut,
   onDelete,
+  onPasteInsert,
+  onPasteOverwrite,
+  onClearClipboard,
   onClearSelection,
   onClose,
   onMarkSpeech,
@@ -37,7 +45,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
     const rect = menuRef.current?.getBoundingClientRect();
     if (!rect) return;
     setMenuSize({ width: rect.width, height: rect.height });
-  }, [anchor, showSelectionActions]);
+  }, [anchor, hasClipboard, showSelectionActions]);
 
   if (!showSelectionActions || !anchor) return null;
 
@@ -128,6 +136,35 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
                 </button>
               </div>
             </div>
+
+            {hasClipboard && (
+              <div className="mt-3 space-y-2">
+                <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">クリップボード</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={onPasteInsert}
+                    className="min-h-[var(--control-size)] flex items-center justify-center bg-white hover:bg-blue-100 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold shadow-sm"
+                  >
+                    貼り付け（挿入）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPasteOverwrite}
+                    className="min-h-[var(--control-size)] flex items-center justify-center bg-white hover:bg-blue-100 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold shadow-sm"
+                  >
+                    貼り付け（上書き）
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClearClipboard}
+                  className="min-h-[var(--control-size)] w-full flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 px-2 py-2 rounded-lg border border-red-200 text-[var(--ui-xs)] font-bold"
+                >
+                  クリップボードを消去
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
