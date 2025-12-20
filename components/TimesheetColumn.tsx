@@ -217,18 +217,31 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 const highlightBorder = isActiveTrack ? toRgba(theme.accentHex, 0.6) : undefined;
                 const highlightBg =
                   isActiveTrack && !isCurrent && !isInSelection && !isPastEnd ? toRgba(theme.accentHex, 0.12) : undefined;
+                const selectionOutline = isInSelection
+                  ? [
+                      `inset 0 0 0 2px ${isTargetTrack ? 'rgba(37, 99, 235, 0.9)' : 'rgba(59, 130, 246, 0.65)'}`,
+                      'inset 0 0 0 1px rgba(255, 255, 255, 0.6)',
+                    ]
+                  : [];
 
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
                 const cellCursor = isCurrent ? 'cursor-grab' : 'cursor-pointer';
 
                 let bgClass = '';
                 if (isCurrent) bgClass = 'bg-yellow-200';
-                else if (isInSelection && isTargetTrack) bgClass = 'bg-blue-200';
-                else if (isInSelection) bgClass = 'bg-blue-50';
+                else if (isInSelection && isTargetTrack) bgClass = 'bg-sky-300/70';
+                else if (isInSelection) bgClass = 'bg-sky-200/60';
                 else if (isTargetTrack) bgClass = 'bg-white';
                 else bgClass = 'bg-gray-50 opacity-60';
 
                 if (isPastEnd && !isCurrent && !isInSelection) bgClass = 'bg-slate-100/80';
+                const shadowParts = [
+                  ...(highlightBorder
+                    ? [`inset 2px 0 0 ${highlightBorder}`, `inset -2px 0 0 ${highlightBorder}`]
+                    : []),
+                  ...selectionOutline,
+                ];
+                const cellShadow = shadowParts.length > 0 ? shadowParts.join(', ') : undefined;
 
                 return (
                   <div
@@ -237,9 +250,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     data-track-id={track.id}
                     className={`relative ${cellCursor} ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
-                      ...(highlightBorder
-                        ? { boxShadow: `inset 2px 0 0 ${highlightBorder}, inset -2px 0 0 ${highlightBorder}` }
-                        : {}),
+                      ...(cellShadow ? { boxShadow: cellShadow } : {}),
                       ...(highlightBg ? { backgroundColor: highlightBg } : {}),
                       touchAction,
                     }}
