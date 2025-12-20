@@ -94,7 +94,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
     const pixelRatio = window.devicePixelRatio || 1;
     const maxHalfPadding = 1;
-    const lineThickness = Math.max(1, Math.round(rowHeight * 0.35));
+    const lineThickness = clamp(Math.round(rowHeight * 0.5), 1, 6);
 
     tracks.forEach((track) => {
       const canvas = waveCanvasRefs.current.get(track.id);
@@ -120,18 +120,26 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
       const volumeDenom = volumeMax > 0 ? volumeMax : 1;
       const centerX = cssWidth / 2;
       const maxHalfWidth = Math.max(1, centerX - maxHalfPadding);
+      const minHalfWidth = Math.max(1, Math.round(maxHalfWidth * 0.06));
       const theme = getTrackTheme(track.id);
-      ctx.fillStyle = toRgba(theme.accentHex, 0.35);
+      const outlineColor = 'rgba(0, 0, 0, 0.3)';
+      const highlightColor = 'rgba(255, 255, 255, 0.45)';
+      const waveColor = toRgba(theme.accentHex, 0.6);
 
       for (let i = 0; i < framesPerColumn; i++) {
         const frame = track.frames[startFrame + i];
         const volume = frame?.volume ?? 0;
         if (volume <= 0) continue;
         const normalized = Math.min(1, volume / volumeDenom);
-        const halfWidth = maxHalfWidth * normalized;
+        const halfWidth = Math.max(minHalfWidth, maxHalfWidth * normalized);
         if (halfWidth <= 0.5) continue;
         const y = i * rowHeight + rowHeight / 2 - lineThickness / 2;
+        ctx.fillStyle = outlineColor;
+        ctx.fillRect(centerX - halfWidth - 0.6, y - 0.6, halfWidth * 2 + 1.2, lineThickness + 1.2);
+        ctx.fillStyle = waveColor;
         ctx.fillRect(centerX - halfWidth, y, halfWidth * 2, lineThickness);
+        ctx.fillStyle = highlightColor;
+        ctx.fillRect(centerX - 0.5, y, 1, lineThickness);
       }
     });
   }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, trackVolumeMax, tracks]);
