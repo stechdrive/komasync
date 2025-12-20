@@ -19,9 +19,13 @@ const registerCoiServiceWorker = () => {
   };
 
   navigator.serviceWorker
-    .register(swUrl, { scope })
+    .register(swUrl, { scope, updateViaCache: 'none' })
     .then((registration) => {
-      if (registration.active && !navigator.serviceWorker.controller && shouldReload()) {
+      void registration.update();
+      return navigator.serviceWorker.ready;
+    })
+    .then(() => {
+      if (!window.crossOriginIsolated && shouldReload()) {
         triggerReload();
       }
     })

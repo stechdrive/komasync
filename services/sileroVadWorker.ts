@@ -54,7 +54,7 @@ const quantile = (values: ArrayLike<number>, q: number): number => {
   return sorted[index];
 };
 
-type OrtModule = typeof import('onnxruntime-web');
+type OrtModule = typeof import('onnxruntime-web/wasm');
 
 type SileroSessionInfo = {
   ort: OrtModule;
@@ -114,7 +114,7 @@ const ensureSession = async (baseUrl: string): Promise<SileroSessionInfo> => {
   if (!sessionPromise || sessionBaseUrl !== resolvedBase) {
     sessionBaseUrl = resolvedBase;
     sessionPromise = (async () => {
-      const ort = (await import('onnxruntime-web')) as OrtModule;
+      const ort = (await import('onnxruntime-web/wasm')) as OrtModule;
       const wasmBaseUrl = new URL('onnxruntime/', resolvedBase).toString();
       ort.env.wasm.wasmPaths = wasmBaseUrl;
       ort.env.wasm.numThreads = 1;
