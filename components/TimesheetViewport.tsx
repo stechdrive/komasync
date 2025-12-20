@@ -27,6 +27,7 @@ type TimesheetViewportProps = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const LONG_PRESS_MENU_MS = 700;
 
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
@@ -54,9 +55,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const lastAutoSheetRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressPointRef = useRef<{ x: number; y: number } | null>(null);
-  const longPressActionRef = useRef<'selection' | 'menu' | null>(null);
-  const longPressTargetRef = useRef<{ frame: number; trackId: string | null } | null>(null);
-  const longPressActiveRef = useRef(false);
   const pendingTapRef = useRef<{
     frame: number;
     trackId: string | null;
@@ -292,9 +290,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
-    longPressActionRef.current = null;
-    longPressActiveRef.current = false;
-    longPressTargetRef.current = null;
   };
 
   const stopPinch = () => {
@@ -307,6 +302,19 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+  };
+
+  const startLongPressMenu = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !onOpenContextMenu) return;
+    longPressPointRef.current = { x: e.clientX, y: e.clientY };
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      onOpenContextMenu({ x: e.clientX, y: e.clientY });
+      pendingTapRef.current = null;
+      selectionAnchorRef.current = null;
+      longPressPointRef.current = null;
+      longPressTimerRef.current = null;
+    }, LONG_PRESS_MENU_MS);
   };
 
   useEffect(() => {
@@ -337,14 +345,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const target = getTrackTarget(e.target);
     pendingTapRef.current = null;
     scrubPendingRef.current = null;
-    longPressActionRef.current = null;
-    longPressTargetRef.current = null;
-    longPressActiveRef.current = false;
+    selectionAnchorRef.current = null;
+    clearLongPressTimer();
+    longPressPointRef.current = null;
 
     if (rulerTarget) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      clearLongPressTimer();
-      longPressPointRef.current = null;
       scrubPendingRef.current = { frame: rulerTarget.frame, x: e.clientX, y: e.clientY };
       isScrubbingRef.current = false;
       return;
@@ -362,37 +368,28 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    if (e.pointerType !== 'touch') return;
-    longPressPointRef.current = { x: e.clientX, y: e.clientY };
-
     if (target) {
-      pendingTapRef.current = {
-        frame: target.frame,
-        trackId: target.trackId,
-        pointerType: e.pointerType,
-        x: e.clientX,
-        y: e.clientY,
-      };
-      longPressActionRef.current = 'selection';
-      longPressTargetRef.current = target;
-      clearLongPressTimer();
-      longPressTimerRef.current = window.setTimeout(() => {
-        longPressActiveRef.current = true;
-        pendingTapRef.current = null;
-        if (target.trackId) onTrackSelect?.(target.trackId);
-        longPressTimerRef.current = null;
-      }, 420);
+      if (e.pointerType === 'touch' && target.frame === currentFrame) {
+        scrubPendingRef.current = { frame: target.frame, x: e.clientX, y: e.clientY };
+        isScrubbingRef.current = false;
+        return;
+      }
+      if (e.pointerType === 'touch') {
+        pendingTapRef.current = {
+          frame: target.frame,
+          trackId: target.trackId,
+          pointerType: e.pointerType,
+          x: e.clientX,
+          y: e.clientY,
+        };
+        selectionAnchorRef.current = target.frame;
+        startLongPressMenu(e);
+        return;
+      }
       return;
     }
 
-    if (!onOpenContextMenu) return;
-    longPressActionRef.current = 'menu';
-    clearLongPressTimer();
-    longPressTimerRef.current = window.setTimeout(() => {
-      onOpenContextMenu({ x: e.clientX, y: e.clientY });
-      longPressActionRef.current = null;
-      longPressTimerRef.current = null;
-    }, 520);
+    startLongPressMenu(e);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -447,10 +444,15 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
         isScrubbingRef.current = true;
         scrubPendingRef.current = null;
+        clearLongPressTimer();
+        longPressPointRef.current = null;
         onScrubStart?.(pending.frame);
       }
 
       if (isScrubbingRef.current) {
+        if (e.pointerType === 'touch') {
+          e.preventDefault();
+        }
         const frame = getScrubFrameAtPoint(e.clientX, e.clientY);
         if (frame !== null) onScrubMove?.(frame);
       }
@@ -462,41 +464,43 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const dx = e.clientX - point.x;
       const dy = e.clientY - point.y;
       const distance = Math.hypot(dx, dy);
-      if (e.pointerType === 'touch') {
-        if (!longPressActiveRef.current && distance > 8) {
-          clearLongPressTimer();
-          longPressPointRef.current = null;
-          longPressActionRef.current = null;
-          longPressTargetRef.current = null;
-          pendingTapRef.current = null;
-        }
-
-        if (
-          longPressActiveRef.current &&
-          longPressActionRef.current === 'selection' &&
-          !isSelectingRef.current &&
-          distance > 6
-        ) {
-          const anchorFrame = longPressTargetRef.current?.frame;
-          if (anchorFrame !== null && anchorFrame !== undefined) {
-            selectionAnchorRef.current = anchorFrame;
-            isSelectingRef.current = true;
-            if (longPressTargetRef.current?.trackId) onTrackSelect?.(longPressTargetRef.current.trackId);
-            const target = getTrackAtPoint(e.clientX, e.clientY);
-            const endFrame = target?.frame ?? anchorFrame;
-            onSelectionChange?.({ startFrame: anchorFrame, endFrame });
-            longPressPointRef.current = null;
-          }
-        }
-      } else if (distance > 8) {
+      if (distance > 8) {
         clearLongPressTimer();
         longPressPointRef.current = null;
+      }
+    }
+
+    const pendingTouch = pendingTapRef.current;
+    if (
+      pendingTouch &&
+      pendingTouch.pointerType === 'touch' &&
+      selectionAnchorRef.current !== null &&
+      !isSelectingRef.current
+    ) {
+      const dx = e.clientX - pendingTouch.x;
+      const dy = e.clientY - pendingTouch.y;
+      if (Math.hypot(dx, dy) > 6) {
+        if (Math.abs(dx) > Math.abs(dy)) {
+          pendingTapRef.current = null;
+          selectionAnchorRef.current = null;
+          clearLongPressTimer();
+          longPressPointRef.current = null;
+          return;
+        }
+        isSelectingRef.current = true;
+        pendingTapRef.current = null;
+        clearLongPressTimer();
+        longPressPointRef.current = null;
+        if (pendingTouch.trackId) onTrackSelect?.(pendingTouch.trackId);
       }
     }
 
     if (isSelectingRef.current) {
       const target = getTrackAtPoint(e.clientX, e.clientY);
       if (!target || selectionAnchorRef.current === null) return;
+      if (e.pointerType === 'touch') {
+        e.preventDefault();
+      }
       onSelectionChange?.({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
       return;
     }
@@ -531,8 +535,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     clearLongPressTimer();
     longPressPointRef.current = null;
     const pending = pendingTapRef.current;
-    const longPressAction = longPressActionRef.current;
-    const longPressActive = longPressActiveRef.current;
 
     if (scrubPendingRef.current) {
       onFrameTap(scrubPendingRef.current.frame);
@@ -550,32 +552,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       isSelectingRef.current = false;
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
-      longPressActionRef.current = null;
-      longPressActiveRef.current = false;
-      return;
-    }
-
-    if (longPressActive && longPressAction === 'selection') {
-      if (onOpenContextMenu) onOpenContextMenu({ x: e.clientX, y: e.clientY });
-      pendingTapRef.current = null;
-      longPressActionRef.current = null;
-      longPressActiveRef.current = false;
-      selectionAnchorRef.current = null;
       return;
     }
 
     if (!pending) {
       selectionAnchorRef.current = null;
-      longPressActionRef.current = null;
-      longPressActiveRef.current = false;
       return;
     }
 
     onFrameTap(pending.frame);
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     pendingTapRef.current = null;
-    longPressActionRef.current = null;
-    longPressActiveRef.current = false;
+    selectionAnchorRef.current = null;
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {

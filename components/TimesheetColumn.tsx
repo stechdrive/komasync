@@ -135,6 +135,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                   isActiveTrack && !isCurrent && !isInSelection && !isPastEnd ? toRgba(theme.accentHex, 0.12) : undefined;
 
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
+                const cellCursor = isCurrent ? 'cursor-grab' : 'cursor-pointer';
 
                 let bgClass = '';
                 if (isCurrent) bgClass = 'bg-yellow-200';
@@ -150,7 +151,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     key={track.id}
                     data-frame-index={globalFrameIndex}
                     data-track-id={track.id}
-                    className={`relative cursor-pointer ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
+                    className={`relative ${cellCursor} ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
                       touchAction: 'pan-x pan-y',
                       ...(highlightBorder
