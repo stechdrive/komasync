@@ -342,14 +342,22 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return frame >= start && frame <= end;
   };
 
+  const isSelectionHit = (frame: number, trackId: string | null): boolean => {
+    if (!isFrameInSelection(frame)) return false;
+    if (editTarget === 'all') return true;
+    if (!trackId) return false;
+    return trackId === editTarget;
+  };
+
   const openSelectionMenu = (point: { x: number; y: number }, target: { frame: number; trackId: string } | null) => {
     if (!onOpenSelectionMenu || !target) return;
-    if (target.trackId) onTrackSelect?.(target.trackId);
-    if (!isFrameInSelection(target.frame)) {
+    const hitSelection = isSelectionHit(target.frame, target.trackId);
+    if (!hitSelection) {
       const range = { startFrame: target.frame, endFrame: target.frame };
       selectionRangeRef.current = range;
       onSelectionChange?.(range);
     }
+    if (target.trackId) onTrackSelect?.(target.trackId);
     onOpenSelectionMenu(point);
   };
 
@@ -814,13 +822,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     const hadSelection = selectionRangeRef.current !== null;
-    const isInSelection = isFrameInSelection(pending.frame);
-    if (hadSelection && !isInSelection) {
+    const hitSelection = isSelectionHit(pending.frame, pending.trackId);
+    if (hadSelection && !hitSelection) {
       selectionRangeRef.current = null;
       onSelectionChange?.(null);
     }
 
-    if (pending.pointerType !== 'mouse' && !hadSelection) {
+    if (pending.pointerType !== 'mouse' && !hitSelection) {
       const range = { startFrame: pending.frame, endFrame: pending.frame };
       selectionRangeRef.current = range;
       onSelectionChange?.(range);
