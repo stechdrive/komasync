@@ -14,25 +14,25 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute inset-x-0 bottom-0 safe-area-bottom">
-        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[calc(var(--app-height)-var(--topbar-h)-var(--dock-h))] overflow-hidden flex flex-col">
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-            <div className="font-bold text-gray-800 flex items-center gap-2">
+            <div className="font-bold text-[var(--ui-sm)] text-gray-800 flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-indigo-600" />
               ヘルプ
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-gray-100"
+              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-gray-100"
               title="閉じる"
             >
-              <X className="w-5 h-5" />
+              <X className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
           </div>
 
-          <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-5 text-[calc(var(--ui-sm)*2)] text-gray-700">
+          <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-5 text-[var(--ui-sm)] text-gray-700">
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">概要</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">概要</div>
               <p>
                 タイムシート上で再生・録音・編集を行うツールです。1列は3秒（72コマ）、2列で1シート（6秒 /
                 144コマ）です。
@@ -40,7 +40,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">タイムシートの見方</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">タイムシートの見方</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>黄色の行が現在の再生ヘッドです。</li>
                 <li>左ルーラーはシート内のコマ数、右ルーラーは総コマ数です。</li>
@@ -50,7 +50,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">ズーム</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">ズーム</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>スマホはピンチ操作でシートを拡大できます。</li>
                 <li>PCは上部バーのズームイン/全体表示ボタンで調整します。</li>
@@ -59,7 +59,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">再生と録音</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">再生と録音</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>再生ボタンで現在位置から再生します。</li>
                 <li>録音ボタンで録音開始、停止で終了します。</li>
@@ -71,7 +71,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">編集</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">編集</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>PCはドラッグ、スマホはタップしたままドラッグで範囲選択します。</li>
                 <li>選択範囲は「切り取り」「削除」が可能です。</li>
@@ -82,7 +82,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">インポート / 書き出し</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">インポート / 書き出し</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>「その他」から音声ファイルをトラックへ読み込めます。</li>
                 <li>トラック別WAVのZIPや、シート画像を書き出せます。</li>
@@ -91,8 +91,8 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">ショートカット</div>
-              <ul className="list-disc ml-4 space-y-1 font-mono text-[calc(var(--ui-xs)*2)]">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">ショートカット</div>
+              <ul className="list-disc ml-4 space-y-1 font-mono text-[var(--ui-xs)]">
                 <li>Undo: Ctrl/Cmd + Z</li>
                 <li>Redo: Ctrl/Cmd + Y / Shift + Ctrl/Cmd + Z</li>
                 <li>Cut: Ctrl/Cmd + X</li>
@@ -102,7 +102,7 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
-              <div className="text-[calc(var(--ui-xs)*2)] text-gray-500">操作のコツ</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">操作のコツ</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>ルーラーやトラックをタップすると再生ヘッドを移動できます。</li>
                 <li>プレイヘッド（黄色の行）をドラッグするとスクラブ再生できます。</li>

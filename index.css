@@ -12,28 +12,30 @@ body,
 html,
 body {
   overscroll-behavior: none;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 :root {
-  --app-height: 100vh;
-  --topbar-h: 3rem;
-  --control-size: 2.5rem;
-  --control-icon: 1.25rem;
-  --record-h: 3rem;
-  --control-wide: 17.25rem;
-  --ui-xs: 0.875rem;
-  --ui-sm: 1rem;
+  --app-height: 100dvh;
+  --ui-xs: clamp(0.85rem, 0.8rem + 0.4vw, 1rem);
+  --ui-sm: clamp(1rem, 0.92rem + 0.6vw, 1.2rem);
+  --control-size: clamp(2.75rem, 2.5rem + 0.8vw, 3.25rem);
+  --control-icon: clamp(1.25rem, 1.1rem + 0.5vw, 1.6rem);
+  --record-h: clamp(3rem, 2.7rem + 1.2vw, 4rem);
+  --control-wide: clamp(16rem, 14rem + 6vw, 23rem);
+  --topbar-h: calc(var(--control-size) + 1.25rem + env(safe-area-inset-top));
+  --dock-h: calc(var(--record-h) + 1rem + env(safe-area-inset-bottom));
 }
 
 @media (pointer: coarse), (max-width: 640px) {
   :root {
-    --topbar-h: 4.25rem;
-    --control-size: 3.75rem;
-    --control-icon: 1.75rem;
-    --record-h: 4.5rem;
-    --control-wide: 23rem;
-    --ui-xs: 0.9375rem;
-    --ui-sm: 1.0625rem;
+    --ui-xs: clamp(0.9rem, 0.85rem + 0.6vw, 1.05rem);
+    --ui-sm: clamp(1.05rem, 1rem + 0.7vw, 1.25rem);
+    --control-size: clamp(3rem, 2.8rem + 1.2vw, 3.75rem);
+    --control-icon: clamp(1.4rem, 1.2rem + 0.7vw, 2rem);
+    --record-h: clamp(3.5rem, 3.2rem + 1.4vw, 4.5rem);
+    --control-wide: clamp(18rem, 16rem + 7vw, 24rem);
   }
 }
 
