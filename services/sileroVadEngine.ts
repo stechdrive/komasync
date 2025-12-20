@@ -16,14 +16,31 @@ type VadWorkerResponse = {
   error?: string;
 };
 
+export type SileroVadStatus = 'idle' | 'silero' | 'fallback';
+
 let worker: Worker | null = null;
 let workerFailed = false;
 let requestId = 0;
+let vadStatus: SileroVadStatus = 'idle';
+const statusListeners = new Set<(status: SileroVadStatus) => void>();
 
 const pending = new Map<
   number,
   { resolve: (frames: FrameData[]) => void; reject: (error: Error) => void }
 >();
+
+const setVadStatus = (nextStatus: SileroVadStatus) => {
+  if (vadStatus === nextStatus) return;
+  vadStatus = nextStatus;
+  statusListeners.forEach((listener) => listener(vadStatus));
+};
+
+export const getSileroVadStatus = (): SileroVadStatus => vadStatus;
+
+export const subscribeSileroVadStatus = (listener: (status: SileroVadStatus) => void): (() => void) => {
+  statusListeners.add(listener);
+  return () => statusListeners.delete(listener);
+};
 
 const resolveBaseUrl = (): string => {
   try {
@@ -40,6 +57,7 @@ const failWorker = (error: Error) => {
     worker.terminate();
     worker = null;
   }
+  setVadStatus('fallback');
   pending.forEach(({ reject }) => reject(error));
   pending.clear();
 };
@@ -80,6 +98,7 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
   tuning: VadTuning
 ): Promise<FrameData[]> => {
   if (workerFailed) {
+    setVadStatus('fallback');
     return analyzeAudioBufferWithVad(audioBuffer, fps, tuning);
   }
 
@@ -113,6 +132,7 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
       worker.postMessage(payload, [samples.buffer]);
     });
 
+    setVadStatus('silero');
     return frames;
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));

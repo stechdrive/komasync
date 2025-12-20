@@ -9,16 +9,12 @@ type TransportDockProps = {
   isMicReady: boolean;
   isMicPreparing: boolean;
   isAllTracks: boolean;
-  vadThresholdScale: number;
-  vadThresholdValue: number;
-  onChangeVadThresholdScale: (scale: number) => void;
   onToggleAllTracks: () => void;
   onInsertOneFrame: () => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
   onPlay: () => void;
   onPause: () => void;
-  onCommitVadThresholdScale: () => void;
 };
 
 export const TransportDock: React.FC<TransportDockProps> = ({
@@ -28,22 +24,17 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   isMicReady,
   isMicPreparing,
   isAllTracks,
-  vadThresholdScale,
-  vadThresholdValue,
-  onChangeVadThresholdScale,
   onToggleAllTracks,
   onInsertOneFrame,
   onStartRecording,
   onStopRecording,
   onPlay,
   onPause,
-  onCommitVadThresholdScale,
 }) => {
   const isRecording = recordingState === RecordingState.RECORDING;
   const isPlaying = recordingState === RecordingState.PLAYING;
   const isBusy = recordingState === RecordingState.PROCESSING;
   const isPreparing = isMicPreparing && !isRecording;
-  const thresholdPercent = Math.round(vadThresholdScale * 100);
 
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
@@ -101,26 +92,6 @@ export const TransportDock: React.FC<TransportDockProps> = ({
             <Play className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           )}
         </button>
-
-        <div className="h-[var(--control-size)] w-full sm:w-[var(--control-wide)] order-2 sm:order-none rounded-xl border border-gray-200 bg-white px-2 py-1 flex flex-col justify-center">
-          <div className="flex items-center justify-between text-[var(--ui-xs)] text-gray-500 leading-none">
-            <span>閾値</span>
-            <span className="font-mono text-[var(--ui-xs)]">{vadThresholdValue.toFixed(3)}</span>
-          </div>
-          <input
-            type="range"
-            min="50"
-            max="150"
-            step="1"
-            value={thresholdPercent}
-            onChange={(e) => onChangeVadThresholdScale(parseInt(e.target.value, 10) / 100)}
-            onPointerUp={onCommitVadThresholdScale}
-            onPointerCancel={onCommitVadThresholdScale}
-            onBlur={onCommitVadThresholdScale}
-            className="mt-1 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-            aria-label="音声検出の閾値"
-          />
-        </div>
 
         <button
           type="button"

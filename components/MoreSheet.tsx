@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
 import { Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
@@ -11,6 +11,8 @@ type MoreSheetProps = {
   vadPreset: VadPreset;
   vadStability: number;
   vadThresholdScale: number;
+  isVadAuto: boolean;
+  isSileroActive: boolean;
   inputRms: number;
   playWhileRecording: boolean;
   onClose: () => void;
@@ -20,6 +22,9 @@ type MoreSheetProps = {
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onChangeVadPreset: (preset: VadPreset) => void;
   onChangeVadStability: (stability01: number) => void;
+  onToggleVadAuto: (nextValue: boolean) => void;
+  onChangeVadThresholdScale: (scale: number) => void;
+  onCommitVadThresholdScale: () => void;
   onTogglePlayWhileRecording: () => void;
 };
 
@@ -30,6 +35,8 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   vadPreset,
   vadStability,
   vadThresholdScale,
+  isVadAuto,
+  isSileroActive,
   inputRms,
   playWhileRecording,
   onClose,
@@ -39,13 +46,22 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   onFileUpload,
   onChangeVadPreset,
   onChangeVadStability,
+  onToggleVadAuto,
+  onChangeVadThresholdScale,
+  onCommitVadThresholdScale,
   onTogglePlayWhileRecording,
 }) => {
   if (!isOpen) return null;
 
+  const [isVadDetailsOpen, setIsVadDetailsOpen] = useState(false);
   const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? `Track ${recordTrackId}`;
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const stabilityPercent = Math.round(vadStability * 100);
+  const thresholdPercent = Math.round(vadThresholdScale * 100);
+  const thresholdValueClass = isSileroActive ? 'text-blue-600' : 'text-gray-600';
+  const autoCaption = isVadAuto
+    ? '感度と途切れにくさを自動で最適化'
+    : '手動で感度と途切れにくさを調整できます';
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
@@ -107,54 +123,117 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
             </div>
 
             <div className="space-y-2">
-              <div className="text-xs text-gray-500">音声検出（途切れにくさ）</div>
+              <div className="text-xs text-gray-500">セリフ検出</div>
 
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-700">自動調整</div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleVadAuto(!isVadAuto)}
+                    className={`w-10 h-6 rounded-full transition-colors relative ${
+                      isVadAuto ? 'bg-indigo-600' : 'bg-gray-300'
+                    }`}
+                    aria-pressed={isVadAuto}
+                    aria-label="セリフ検出の自動調整"
+                  >
+                    <div
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                        isVadAuto ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="text-[11px] text-gray-500">{autoCaption}</div>
+
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm text-gray-700">
                     <Mic className="w-5 h-5 text-gray-500 shrink-0" /> 入力レベル
                   </div>
                   <div className="font-mono text-xs text-gray-600">
-                    {inputRms.toFixed(3)} / th {vadTuning.startThreshold.toFixed(3)}
+                    {inputRms.toFixed(3)} / th{' '}
+                    <span className={thresholdValueClass}>{vadTuning.startThreshold.toFixed(3)}</span>
                   </div>
                 </div>
 
                 <VuMeter value={inputRms} threshold={vadTuning.startThreshold} />
 
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="text-xs text-gray-600">
-                    環境
-                    <select
-                      value={vadPreset}
-                      onChange={(e) => onChangeVadPreset(e.target.value as VadPreset)}
-                      className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
-                    >
-                      <option value="quiet">静か</option>
-                      <option value="normal">普通</option>
-                      <option value="noisy">騒がしい</option>
-                    </select>
-                  </label>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-600">詳細設定</div>
+                  <button
+                    type="button"
+                    onClick={() => setIsVadDetailsOpen((prev) => !prev)}
+                    className="text-xs text-indigo-600 font-bold hover:text-indigo-800"
+                  >
+                    {isVadDetailsOpen ? '閉じる' : '開く'}
+                  </button>
+                </div>
 
-                  <div className="text-xs text-gray-600">
-                    途切れにくさ
-                    <div className="mt-1 flex items-center gap-2">
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={stabilityPercent}
-                        onChange={(e) => onChangeVadStability(parseInt(e.target.value, 10) / 100)}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      />
-                      <div className="w-10 text-right font-mono text-xs text-gray-600">{stabilityPercent}</div>
+                {isVadDetailsOpen && (
+                  <div className={`space-y-3 ${isVadAuto ? 'opacity-60' : ''}`}>
+                    {isVadAuto && (
+                      <div className="text-[11px] text-gray-500">
+                        自動調整中は詳細設定を変更できません。
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-600">
+                      セリフ検出：感度
+                      <div className="mt-1 flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="50"
+                          max="150"
+                          step="1"
+                          value={thresholdPercent}
+                          onChange={(e) => onChangeVadThresholdScale(parseInt(e.target.value, 10) / 100)}
+                          onPointerUp={onCommitVadThresholdScale}
+                          onPointerCancel={onCommitVadThresholdScale}
+                          onBlur={onCommitVadThresholdScale}
+                          disabled={isVadAuto}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:cursor-default"
+                          aria-label="セリフ検出感度"
+                        />
+                        <div className="w-12 text-right font-mono text-xs text-gray-600">{thresholdPercent}%</div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-gray-600">
+                      セリフ検出：途切れにくさ
+                      <div className="mt-1 flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={stabilityPercent}
+                          onChange={(e) => onChangeVadStability(parseInt(e.target.value, 10) / 100)}
+                          disabled={isVadAuto}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:cursor-default"
+                        />
+                        <div className="w-10 text-right font-mono text-xs text-gray-600">{stabilityPercent}</div>
+                      </div>
+                    </div>
+
+                    <label className="text-xs text-gray-600">
+                      環境
+                      <select
+                        value={vadPreset}
+                        onChange={(e) => onChangeVadPreset(e.target.value as VadPreset)}
+                        disabled={isVadAuto}
+                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm disabled:bg-gray-100"
+                      >
+                        <option value="quiet">静か</option>
+                        <option value="normal">普通</option>
+                        <option value="noisy">騒がしい</option>
+                      </select>
+                    </label>
+
+                    <div className="text-[11px] text-gray-500">
+                      hold {vadTuning.holdFrames}f / end {vadTuning.endThreshold.toFixed(3)}
                     </div>
                   </div>
-                </div>
-
-                <div className="text-[11px] text-gray-500">
-                  hold {vadTuning.holdFrames}f / end {vadTuning.endThreshold.toFixed(3)}
-                </div>
+                )}
               </div>
             </div>
 
