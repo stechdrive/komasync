@@ -217,7 +217,8 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 const highlightBorder = isActiveTrack ? toRgba(theme.accentHex, 0.6) : undefined;
                 const highlightBg =
                   isActiveTrack && !isCurrent && !isInSelection && !isPastEnd ? toRgba(theme.accentHex, 0.12) : undefined;
-                const selectionOutline = isInSelection
+                const isSelectionActive = isInSelection && isTargetTrack;
+                const selectionOutline = isSelectionActive
                   ? [
                       `inset 0 0 0 2px ${isTargetTrack ? 'rgba(37, 99, 235, 0.9)' : 'rgba(59, 130, 246, 0.65)'}`,
                       'inset 0 0 0 1px rgba(255, 255, 255, 0.6)',
@@ -229,8 +230,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
 
                 let bgClass = '';
                 if (isCurrent) bgClass = 'bg-yellow-200';
-                else if (isInSelection && isTargetTrack) bgClass = 'bg-sky-300/70';
-                else if (isInSelection) bgClass = 'bg-sky-200/60';
+                else if (isSelectionActive) bgClass = 'bg-sky-300/70';
                 else if (isTargetTrack) bgClass = 'bg-white';
                 else bgClass = 'bg-gray-50 opacity-60';
 
