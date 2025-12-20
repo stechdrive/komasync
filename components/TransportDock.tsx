@@ -81,7 +81,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canPlayToggle}
           onClick={isPlaying ? onPause : onPlay}
-          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
+          className={`w-[calc(var(--control-size)*1.5)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             canPlayToggle ? 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700' : 'opacity-50 border-gray-200'
           }`}
           title={isPlaying ? '一時停止' : '再生'}

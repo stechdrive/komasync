@@ -16,8 +16,8 @@ body,
   --control-icon: 1.25rem;
   --record-h: 3rem;
   --control-wide: 17.25rem;
-  --ui-xs: 0.625rem;
-  --ui-sm: 0.75rem;
+  --ui-xs: 0.875rem;
+  --ui-sm: 1rem;
 }
 
 @media (pointer: coarse), (max-width: 640px) {
@@ -27,8 +27,8 @@ body,
     --control-icon: 1.75rem;
     --record-h: 4.5rem;
     --control-wide: 23rem;
-    --ui-xs: 0.875rem;
-    --ui-sm: 1rem;
+    --ui-xs: 0.9375rem;
+    --ui-sm: 1.0625rem;
   }
 }
 
