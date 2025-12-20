@@ -11,6 +11,25 @@ body,
 
 :root {
   --app-height: 100vh;
+  --topbar-h: 3rem;
+  --control-size: 2.5rem;
+  --control-icon: 1.25rem;
+  --record-h: 3rem;
+  --control-wide: 17.25rem;
+  --ui-xs: 0.625rem;
+  --ui-sm: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --topbar-h: 3.75rem;
+    --control-size: 3.25rem;
+    --control-icon: 1.5rem;
+    --record-h: 4rem;
+    --control-wide: 21rem;
+    --ui-xs: 0.75rem;
+    --ui-sm: 0.8125rem;
+  }
 }
 
 body {

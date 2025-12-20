@@ -68,7 +68,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <div className="safe-area-top bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="h-14 sm:h-12 px-3 flex items-center justify-between gap-3">
+      <div className="h-[var(--topbar-h)] px-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -77,7 +77,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onPointerUp={handleResetCancel}
             onPointerCancel={handleResetCancel}
             onPointerLeave={handleResetCancel}
-            className={`shrink-0 w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center border transition-colors ${
+            className={`shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center border transition-colors ${
               isResetDisabled
                 ? 'opacity-40 border-white/20'
                 : isHoldingReset
@@ -86,15 +86,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             }`}
             title="長押しでリセット（録音データも削除）"
           >
-            <RefreshCw className="w-5 h-5" />
+            <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
 
           <div className="min-w-0 leading-tight">
-            <div className="text-xs sm:text-[11px] font-bold truncate">
+            <div className="text-[var(--ui-sm)] font-bold truncate">
               {APP_NAME} v{APP_VERSION}
             </div>
-            <div className="text-xs sm:text-[10px] opacity-80 truncate">シート {sheetNumber}</div>
-            <div className="font-mono text-xs truncate">
+            <div className="text-[var(--ui-xs)] opacity-80 truncate">シート {sheetNumber}</div>
+            <div className="font-mono text-[var(--ui-sm)] truncate">
               総 {totalTimecode}
               {selectionTimecode ? ` / 選 ${selectionTimecode}` : ''}
             </div>
@@ -106,19 +106,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onUndo}
             disabled={isUndoDisabled}
-            className="w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title="Undo"
           >
-            <Undo2 className="w-5 h-5" />
+            <Undo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
           <button
             type="button"
             onClick={onRedo}
             disabled={isRedoDisabled}
-            className="w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title="Redo"
           >
-            <Redo2 className="w-5 h-5" />
+            <Redo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
           <button
             type="button"
@@ -126,28 +126,32 @@ export const TopBar: React.FC<TopBarProps> = ({
               const rect = e.currentTarget.getBoundingClientRect();
               onOpenMuteMenu({ x: rect.right - 8, y: rect.bottom + 6 });
             }}
-            className={`w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
+            className={`w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
               hasMuted ? 'text-amber-100' : ''
             }`}
             title="ミュート"
           >
-            {hasMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            {hasMuted ? (
+              <VolumeX className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+            ) : (
+              <Volume2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
+            )}
           </button>
           <button
             type="button"
             onClick={onOpenHelp}
-            className="w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title="ヘルプ"
           >
-            <HelpCircle className="w-5 h-5" />
+            <HelpCircle className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
           <button
             type="button"
             onClick={onOpenMore}
-            className="w-11 h-11 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title="その他"
           >
-            <MoreHorizontal className="w-5 h-5" />
+            <MoreHorizontal className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
         </div>
       </div>

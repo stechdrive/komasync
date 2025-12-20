@@ -40,6 +40,10 @@ const createInitialTracks = (): Track[] => [
   { id: '3', name: 'Track 3', color: 'green', audioBuffer: null, frames: [], isVisible: true, isMuted: false },
 ];
 
+type HistoryEntry =
+  | { kind: 'tracks'; tracks: Track[] }
+  | { kind: 'vadThreshold'; value: number };
+
 const getSupportedMimeType = (): string | undefined => {
   const types = [
     'audio/webm;codecs=opus',
@@ -65,8 +69,8 @@ export default function App() {
   const [editTarget, setEditTarget] = useState<EditTarget>('1');
 
   // History State for Undo/Redo
-  const [historyPast, setHistoryPast] = useState<Track[][]>([]);
-  const [historyFuture, setHistoryFuture] = useState<Track[][]>([]);
+  const [historyPast, setHistoryPast] = useState<HistoryEntry[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<HistoryEntry[]>([]);
 
   // Clipboard State
   const [clipboardClip, setClipboardClip] = useState<ClipboardClip | null>(null);
@@ -103,6 +107,8 @@ export default function App() {
   const recordingStateRef = useRef(recordingState);
   const isMicReadyRef = useRef(isMicReady);
   const isMicPreparingRef = useRef(isMicPreparing);
+  const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
+  const vadThresholdCommitTimerRef = useRef<number | null>(null);
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -154,9 +160,8 @@ export default function App() {
 
   // Re-process when VAD settings change
   useEffect(() => {
-    // Note: VAD settings changes usually don't need undo history as they are non-destructive view changes,
-    // but here we modify the derived 'frames' property. We won't push to history for VAD調整
-    // to avoid spamming the undo stack.
+    // VAD設定は非破壊の表示変更なので、履歴は別ロジックで管理する。
+    // ここでは派生 frames の再生成のみを行う。
     const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
     setTracks((prevTracks) =>
       prevTracks.map((track) =>
@@ -168,10 +173,53 @@ export default function App() {
   // --- History Management ---
   const HISTORY_LIMIT = 30;
 
-  const saveToHistory = useCallback(() => {
-    setHistoryPast(prev => [...prev.slice(-(HISTORY_LIMIT - 1)), tracks]);
+  const pushHistoryEntry = useCallback((entry: HistoryEntry) => {
+    setHistoryPast(prev => [...prev.slice(-(HISTORY_LIMIT - 1)), entry]);
     setHistoryFuture([]); // Clear future on new action
-  }, [tracks]);
+  }, []);
+
+  const clearVadThresholdCommitTimer = () => {
+    if (vadThresholdCommitTimerRef.current !== null) {
+      window.clearTimeout(vadThresholdCommitTimerRef.current);
+      vadThresholdCommitTimerRef.current = null;
+    }
+  };
+
+  const commitVadThresholdHistory = useCallback(() => {
+    clearVadThresholdCommitTimer();
+    const snapshot = vadThresholdHistoryRef.current;
+    if (!snapshot) return;
+    vadThresholdHistoryRef.current = null;
+    if (snapshot.startValue !== vadThresholdScale) {
+      pushHistoryEntry({ kind: 'vadThreshold', value: snapshot.startValue });
+    }
+  }, [pushHistoryEntry, vadThresholdScale]);
+
+  const scheduleVadThresholdCommit = useCallback(() => {
+    clearVadThresholdCommitTimer();
+    vadThresholdCommitTimerRef.current = window.setTimeout(() => {
+      commitVadThresholdHistory();
+    }, 300);
+  }, [commitVadThresholdHistory]);
+
+  useEffect(() => {
+    return () => {
+      clearVadThresholdCommitTimer();
+    };
+  }, []);
+
+  const handleVadThresholdScaleChange = useCallback((nextScale: number) => {
+    if (!vadThresholdHistoryRef.current) {
+      vadThresholdHistoryRef.current = { startValue: vadThresholdScale };
+    }
+    setVadThresholdScale(nextScale);
+    scheduleVadThresholdCommit();
+  }, [scheduleVadThresholdCommit, vadThresholdScale]);
+
+  const saveToHistory = useCallback(() => {
+    commitVadThresholdHistory();
+    pushHistoryEntry({ kind: 'tracks', tracks });
+  }, [commitVadThresholdHistory, pushHistoryEntry, tracks]);
 
   const handleUndo = useCallback(() => {
     if (historyPast.length === 0) return;
@@ -179,18 +227,26 @@ export default function App() {
     const previous = historyPast[historyPast.length - 1];
     const newPast = historyPast.slice(0, -1);
     
-    setHistoryFuture(prev => [tracks, ...prev]);
-    setTracks(
-      previous.map((t) =>
-        t.audioBuffer
-          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
-          : { ...t, frames: [] }
-      )
-    );
+    const futureEntry: HistoryEntry =
+      previous.kind === 'tracks'
+        ? { kind: 'tracks', tracks }
+        : { kind: 'vadThreshold', value: vadThresholdScale };
+
+    setHistoryFuture(prev => [futureEntry, ...prev]);
+    if (previous.kind === 'tracks') {
+      setTracks(
+        previous.tracks.map((t) =>
+          t.audioBuffer
+            ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
+            : { ...t, frames: [] }
+        )
+      );
+      // Reset selection to avoid ghost selections
+      setSelection(null);
+    } else {
+      setVadThresholdScale(previous.value);
+    }
     setHistoryPast(newPast);
-    
-    // Reset selection to avoid ghost selections
-    setSelection(null);
   }, [historyPast, tracks, vadPreset, vadStability, vadThresholdScale]);
 
   const handleRedo = useCallback(() => {
@@ -199,17 +255,25 @@ export default function App() {
     const next = historyFuture[0];
     const newFuture = historyFuture.slice(1);
 
-    setHistoryPast(prev => [...prev, tracks]);
-    setTracks(
-      next.map((t) =>
-        t.audioBuffer
-          ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
-          : { ...t, frames: [] }
-      )
-    );
-    setHistoryFuture(newFuture);
+    const pastEntry: HistoryEntry =
+      next.kind === 'tracks'
+        ? { kind: 'tracks', tracks }
+        : { kind: 'vadThreshold', value: vadThresholdScale };
 
-    setSelection(null);
+    setHistoryPast(prev => [...prev, pastEntry]);
+    if (next.kind === 'tracks') {
+      setTracks(
+        next.tracks.map((t) =>
+          t.audioBuffer
+            ? { ...t, frames: analyzeAudioBufferWithVad(t.audioBuffer, FPS, getVadTuning(vadPreset, vadStability, vadThresholdScale)) }
+            : { ...t, frames: [] }
+        )
+      );
+      setSelection(null);
+    } else {
+      setVadThresholdScale(next.value);
+    }
+    setHistoryFuture(newFuture);
   }, [historyFuture, tracks, vadPreset, vadStability, vadThresholdScale]);
 
   const handleResetProject = () => {
@@ -1190,7 +1254,8 @@ export default function App() {
           isAllTracks={editTarget === 'all'}
           vadThresholdScale={vadThresholdScale}
           vadThresholdValue={vadTuning.startThreshold}
-          onChangeVadThresholdScale={setVadThresholdScale}
+          onChangeVadThresholdScale={handleVadThresholdScaleChange}
+          onCommitVadThresholdScale={commitVadThresholdHistory}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onStartRecording={handleStartRecording}
