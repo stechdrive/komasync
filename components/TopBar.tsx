@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Scan, Undo2, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { APP_NAME } from '@/domain/appMeta';
 
@@ -23,8 +23,6 @@ type TopBarProps = {
   onOpenMore: () => void;
 };
 
-const RESET_HOLD_MS = 900;
-
 export const TopBar: React.FC<TopBarProps> = ({
   sheetNumber,
   totalTimecode,
@@ -45,36 +43,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenHelp,
   onOpenMore,
 }) => {
-  const timerRef = useRef<number | null>(null);
-  const [isHoldingReset, setIsHoldingReset] = useState(false);
   const hasMuted = mutedCount > 0;
-
-  const clearTimer = () => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => clearTimer();
-  }, []);
-
-  const handleResetPointerDown = () => {
-    if (isResetDisabled) return;
-    clearTimer();
-    setIsHoldingReset(true);
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      setIsHoldingReset(false);
-      onReset();
-    }, RESET_HOLD_MS);
-  };
-
-  const handleResetCancel = () => {
-    clearTimer();
-    setIsHoldingReset(false);
-  };
 
   return (
     <div className="safe-area-top topbar-compact h-full bg-indigo-600 text-white border-b border-indigo-700/40">
@@ -83,18 +52,13 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             disabled={isResetDisabled}
-            onPointerDown={handleResetPointerDown}
-            onPointerUp={handleResetCancel}
-            onPointerCancel={handleResetCancel}
-            onPointerLeave={handleResetCancel}
+            onClick={onReset}
             className={`shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center border transition-colors ${
               isResetDisabled
                 ? 'opacity-40 border-white/20'
-                : isHoldingReset
-                  ? 'bg-red-600 border-red-300'
-                  : 'bg-indigo-700/40 hover:bg-indigo-700 border-white/20'
+                : 'bg-indigo-700/40 hover:bg-indigo-700 border-white/20'
             }`}
-            title="長押しでリセット（録音データも削除）"
+            title="リセット"
           >
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
