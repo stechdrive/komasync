@@ -60,3 +60,9 @@
 MIT License（`LICENSE` を参照）
 
 Copyright (c) 2025 stechdrive
+
+## 第三者ライセンス（モデル/依存）
+
+- Silero VAD のモデル（`public/models/silero_vad.onnx`）を同梱しています。
+- 詳細は `THIRD_PARTY_NOTICES.md` と `public/THIRD_PARTY_NOTICES.txt` を参照してください。
+  - GitHub Pages 公開時は `/THIRD_PARTY_NOTICES.txt` から確認できます。

@@ -34,7 +34,8 @@
     "components/**/*.tsx",
     "domain/**/*.ts",
     "hooks/**/*.ts",
-    "services/**/*.ts"
+    "services/**/*.ts",
+    "**/*.d.ts"
   ],
   "exclude": [
     "dist",
