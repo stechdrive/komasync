@@ -69,7 +69,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   } | null>(null);
   const isScrubbingRef = useRef(false);
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStateRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  const pinchStateRef = useRef<{
+    startDistance: number;
+    startZoom: number;
+    startCenter: { x: number; y: number };
+    mode: 'pan' | 'zoom' | null;
+  } | null>(null);
   const pinchPanStartRef = useRef<{ centerX: number; centerY: number; scrollLeft: number; scrollTop: number } | null>(
     null
   );
@@ -479,7 +484,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         const pinchInfo = getPinchInfo();
         if (pinchInfo && pinchInfo.distance > 0) {
           isPinchingRef.current = true;
-          pinchStateRef.current = { startDistance: pinchInfo.distance, startZoom: zoom };
+          pinchStateRef.current = {
+            startDistance: pinchInfo.distance,
+            startZoom: zoom,
+            startCenter: pinchInfo.center,
+            mode: null,
+          };
           if (scrollEl) {
             pinchPanStartRef.current = {
               centerX: pinchInfo.center.x,
@@ -552,22 +562,47 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const pinchInfo = getPinchInfo();
       if (!pinchState || !pinchInfo || pinchState.startDistance <= 0) return;
 
+      if (!pinchState.mode) {
+        const distanceDelta = Math.abs(pinchInfo.distance - pinchState.startDistance);
+        const centerDelta = Math.hypot(
+          pinchInfo.center.x - pinchState.startCenter.x,
+          pinchInfo.center.y - pinchState.startCenter.y
+        );
+        const zoomThreshold = isZoomed ? 16 : 10;
+        const panThreshold = 8;
+
+        if (distanceDelta >= zoomThreshold) {
+          pinchState.mode = 'zoom';
+        } else if (centerDelta >= panThreshold) {
+          pinchState.mode = 'pan';
+        }
+      }
+
+      if (pinchState.mode === 'pan') {
+        const panStart = pinchPanStartRef.current;
+        const el = scrollRef.current;
+        if (panStart && el) {
+          const dx = pinchInfo.center.x - panStart.centerX;
+          const dy = pinchInfo.center.y - panStart.centerY;
+          el.scrollLeft = panStart.scrollLeft - dx;
+          el.scrollTop = panStart.scrollTop - dy;
+        }
+        e.preventDefault();
+        return;
+      }
+
+      if (!pinchState.mode) {
+        e.preventDefault();
+        return;
+      }
+
       const nextZoom = Math.min(
         maxZoom,
         Math.max(minZoom, pinchState.startZoom * (pinchInfo.distance / pinchState.startDistance))
       );
 
       const zoomDelta = Math.abs(nextZoom - zoom);
-      const panStart = pinchPanStartRef.current;
       const el = scrollRef.current;
-      if (panStart && el && zoomDelta < 0.02) {
-        const dx = pinchInfo.center.x - panStart.centerX;
-        const dy = pinchInfo.center.y - panStart.centerY;
-        el.scrollLeft = panStart.scrollLeft - dx;
-        el.scrollTop = panStart.scrollTop - dy;
-        e.preventDefault();
-        return;
-      }
 
       if (zoomDelta < 0.0001) {
         e.preventDefault();
