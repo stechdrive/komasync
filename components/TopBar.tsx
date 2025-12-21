@@ -1,6 +1,8 @@
 import React from 'react';
 import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Scan, Undo2, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { APP_NAME } from '@/domain/appMeta';
+import { useLongPressTooltip } from '@/hooks/useLongPressTooltip';
+import { LongPressTooltip } from '@/components/LongPressTooltip';
 
 type TopBarProps = {
   sheetNumber: number;
@@ -44,6 +46,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenMore,
 }) => {
   const hasMuted = mutedCount > 0;
+  const { tooltip, getTooltipProps } = useLongPressTooltip();
+  const tooltipProps = getTooltipProps({ placement: 'bottom' });
 
   return (
     <div className="safe-area-top topbar-compact h-full bg-indigo-600 text-white border-b border-indigo-700/40">
@@ -53,6 +57,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             disabled={isResetDisabled}
             onClick={onReset}
+            {...tooltipProps}
             className={`shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center border transition-colors ${
               isResetDisabled
                 ? 'opacity-40 border-white/20'
@@ -81,6 +86,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               type="button"
               onClick={onZoomOut}
               disabled={isZoomOutDisabled}
+              {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
               title="ズームアウト（100%まで）"
             >
@@ -89,6 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={onZoomReset}
+              {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
               title="全体表示"
               aria-label="全体表示"
@@ -99,6 +106,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               type="button"
               onClick={onZoomIn}
               disabled={isZoomInDisabled}
+              {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
               title="ズームイン"
             >
@@ -109,6 +117,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onUndo}
             disabled={isUndoDisabled}
+            {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title="Undo"
           >
@@ -118,6 +127,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onRedo}
             disabled={isRedoDisabled}
+            {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title="Redo"
           >
@@ -129,6 +139,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               const rect = e.currentTarget.getBoundingClientRect();
               onOpenMuteMenu({ x: rect.right - 8, y: rect.bottom + 6 });
             }}
+            {...tooltipProps}
             className={`w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
               hasMuted ? 'text-amber-100' : ''
             }`}
@@ -143,6 +154,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onOpenHelp}
+            {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title="ヘルプ"
           >
@@ -151,6 +163,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onOpenMore}
+            {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title="その他"
           >
@@ -158,6 +171,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
       </div>
+      <LongPressTooltip tooltip={tooltip} />
     </div>
   );
 };

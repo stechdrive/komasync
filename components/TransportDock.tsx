@@ -1,6 +1,8 @@
 import React from 'react';
 import { Mic, Minus, Pause, Play, Plus, StopCircle } from 'lucide-react';
 import { RecordingState } from '@/types';
+import { useLongPressTooltip } from '@/hooks/useLongPressTooltip';
+import { LongPressTooltip } from '@/components/LongPressTooltip';
 
 type TransportDockProps = {
   recordingState: RecordingState;
@@ -52,6 +54,8 @@ export const TransportDock: React.FC<TransportDockProps> = ({
       : isMicReady
         ? 'bg-green-500'
         : 'bg-gray-300';
+  const { tooltip, getTooltipProps } = useLongPressTooltip();
+  const tooltipProps = getTooltipProps({ placement: 'top' });
 
   return (
     <div className="safe-area-bottom bg-white border-t border-gray-200">
@@ -60,6 +64,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canRecordToggle}
           onClick={isRecording ? onStopRecording : onStartRecording}
+          {...tooltipProps}
           className={`flex-1 h-[var(--record-h)] rounded-xl border flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98] ${
             isRecording
               ? 'border-red-500 bg-red-50 text-red-600'
@@ -88,6 +93,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canPlayToggle}
           onClick={isPlaying ? onPause : onPlay}
+          {...tooltipProps}
           className={`w-[calc(var(--control-size)*1.8)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             canPlayToggle ? 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700' : 'opacity-50 border-gray-200'
           }`}
@@ -103,6 +109,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         <button
           type="button"
           onClick={onToggleAllTracks}
+          {...tooltipProps}
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
             isAllTracks ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
           }`}
@@ -115,6 +122,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canStepFrame}
           onClick={onMarkSpeechFrame}
+          {...tooltipProps}
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
             canStepFrame
               ? 'border-gray-200 text-emerald-600 hover:border-indigo-400 hover:bg-indigo-50'
@@ -129,6 +137,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={!canStepFrame}
           onClick={onMarkNonSpeechFrame}
+          {...tooltipProps}
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
             canStepFrame
               ? 'border-gray-200 text-gray-500 hover:border-indigo-400 hover:bg-indigo-50'
@@ -143,6 +152,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={isBusy || isRecording || isPlaying}
           onClick={onDeleteOneFrame}
+          {...tooltipProps}
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             isBusy || isRecording || isPlaying
               ? 'opacity-50 border-gray-200'
@@ -157,6 +167,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           type="button"
           disabled={isBusy || isRecording || isPlaying}
           onClick={onInsertOneFrame}
+          {...tooltipProps}
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             isBusy || isRecording || isPlaying
               ? 'opacity-50 border-gray-200'
@@ -168,6 +179,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         </button>
       </div>
 
+      <LongPressTooltip tooltip={tooltip} />
     </div>
   );
 };
