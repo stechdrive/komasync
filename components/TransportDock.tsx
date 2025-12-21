@@ -49,8 +49,8 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         : 'bg-gray-300';
 
   return (
-    <div className="safe-area-bottom h-full bg-white border-t border-gray-200">
-      <div className="h-full px-3 py-2 flex flex-wrap items-center gap-2">
+    <div className="safe-area-bottom bg-white border-t border-gray-200">
+      <div className="px-3 py-2 flex flex-wrap items-center content-start gap-x-2 gap-y-2">
         <button
           type="button"
           disabled={!canRecordToggle}
