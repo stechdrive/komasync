@@ -16,6 +16,8 @@ type TransportDockProps = {
   onStopRecording: () => void;
   onPlay: () => void;
   onPause: () => void;
+  onMarkSpeechFrame: () => void;
+  onMarkNonSpeechFrame: () => void;
 };
 
 export const TransportDock: React.FC<TransportDockProps> = ({
@@ -32,6 +34,8 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   onStopRecording,
   onPlay,
   onPause,
+  onMarkSpeechFrame,
+  onMarkNonSpeechFrame,
 }) => {
   const isRecording = recordingState === RecordingState.RECORDING;
   const isPlaying = recordingState === RecordingState.PLAYING;
@@ -40,6 +44,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
 
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
+  const canStepFrame = !isBusy && !isRecording && !isPlaying;
   const micDotClass = isRecording
     ? 'bg-red-500'
     : isPreparing
@@ -49,8 +54,8 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         : 'bg-gray-300';
 
   return (
-    <div className="safe-area-bottom h-full bg-white border-t border-gray-200">
-      <div className="h-full px-3 py-2 flex flex-wrap items-center gap-2">
+    <div className="safe-area-bottom bg-white border-t border-gray-200">
+      <div className="px-3 py-2 flex flex-wrap items-center content-start gap-x-2 gap-y-2">
         <button
           type="button"
           disabled={!canRecordToggle}
@@ -104,6 +109,34 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           title="全トラック"
         >
           全
+        </button>
+
+        <button
+          type="button"
+          disabled={!canStepFrame}
+          onClick={onMarkSpeechFrame}
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
+            canStepFrame
+              ? 'border-gray-200 text-emerald-600 hover:border-indigo-400 hover:bg-indigo-50'
+              : 'opacity-50 border-gray-200'
+          }`}
+          title="1コマをセリフとしてラベル"
+        >
+          話
+        </button>
+
+        <button
+          type="button"
+          disabled={!canStepFrame}
+          onClick={onMarkNonSpeechFrame}
+          className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
+            canStepFrame
+              ? 'border-gray-200 text-gray-500 hover:border-indigo-400 hover:bg-indigo-50'
+              : 'opacity-50 border-gray-200'
+          }`}
+          title="1コマを非セリフとして除外"
+        >
+          無
         </button>
 
         <button
