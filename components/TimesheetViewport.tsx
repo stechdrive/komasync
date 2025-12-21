@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
@@ -14,6 +14,7 @@ type TimesheetViewportProps = {
   minZoom: number;
   maxZoom: number;
   isAutoScrollActive: boolean;
+  isScrubbing: boolean;
   onFrameTap: (frame: number) => void;
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
@@ -40,6 +41,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   minZoom,
   maxZoom,
   isAutoScrollActive,
+  isScrubbing,
   onFrameTap,
   onBackgroundClick,
   onFirstVisibleColumnChange,
@@ -103,6 +105,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
   }, []);
   const isZoomed = zoom > 1;
+  const isAutoScrollEnabled = isAutoScrollActive || isScrubbing;
   const allowSingleFingerPan = !isIOS && !isZoomed;
   const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
 
@@ -152,7 +155,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, [baseColumnWidth, zoom]);
 
   const rulerWidth = useMemo(() => {
-    return clamp(Math.round(columnWidth * 0.25), 36, 56);
+    const baseWidth = Math.round(columnWidth * 0.1);
+    const minWidth = Math.max(44, Math.round(columnWidth * 0.08));
+    const maxWidth = Math.max(64, Math.round(columnWidth * 0.14));
+    return clamp(baseWidth, minWidth, maxWidth);
   }, [columnWidth]);
 
   const rowHeight = useMemo(() => {
@@ -175,6 +181,54 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
+
+  const scrollToFrame = useCallback(
+    (
+      frame: number,
+      options?: {
+        behavior?: ScrollBehavior;
+        marginScale?: number;
+      }
+    ) => {
+      const el = scrollRef.current;
+      if (!el || columnWidth <= 0 || rowHeight <= 0) return;
+
+      const columnIndex = Math.floor(frame / framesPerColumn);
+      const rowIndex = frame % framesPerColumn;
+      const columnLeft = columnIndex * columnWidth;
+      const columnRight = columnLeft + columnWidth;
+      const rowTop = rowIndex * rowHeight;
+      const rowBottom = rowTop + rowHeight;
+      const viewportWidth = el.clientWidth;
+      const viewportHeight = el.clientHeight;
+
+      const marginScale = options?.marginScale ?? 1;
+      const baseMarginX = Math.min(columnWidth * 0.12, 48);
+      const baseMarginY = Math.min(rowHeight * 2.2, 56);
+      const marginX = baseMarginX * marginScale;
+      const marginY = baseMarginY * marginScale;
+
+      let nextLeft = el.scrollLeft;
+      let nextTop = el.scrollTop;
+
+      if (columnLeft < nextLeft + marginX) {
+        nextLeft = Math.max(0, columnLeft - marginX);
+      } else if (columnRight > nextLeft + viewportWidth - marginX) {
+        nextLeft = Math.max(0, columnRight - viewportWidth + marginX);
+      }
+
+      if (rowTop < nextTop + marginY) {
+        nextTop = Math.max(0, rowTop - marginY);
+      } else if (rowBottom > nextTop + viewportHeight - marginY) {
+        nextTop = Math.max(0, rowBottom - viewportHeight + marginY);
+      }
+
+      if (nextLeft !== el.scrollLeft || nextTop !== el.scrollTop) {
+        el.scrollTo({ left: nextLeft, top: nextTop, behavior: options?.behavior ?? 'smooth' });
+      }
+    },
+    [columnWidth, framesPerColumn, rowHeight]
+  );
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -210,7 +264,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, [columnWidth, rowHeight]);
 
   useEffect(() => {
-    if (!isAutoScrollActive) {
+    if (!isAutoScrollEnabled) {
       lastAutoSheetRef.current = null;
       return;
     }
@@ -222,45 +276,27 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (lastAutoSheetRef.current === sheetIndex) return;
       lastAutoSheetRef.current = sheetIndex;
 
-      // 再生中にシート境界へ到達したら自動スクロール
+      // 再生中/スクラブ中にシート境界へ到達したら自動スクロール
       const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
-      el.scrollTo({ left: targetLeft, behavior: 'smooth' });
+      const behavior: ScrollBehavior = isScrubbing ? 'auto' : 'smooth';
+      el.scrollTo({ left: targetLeft, behavior });
       return;
     }
 
     lastAutoSheetRef.current = null;
 
-    // ズーム中は再生ヘッドが見える位置まで追従スクロール
-    const columnIndex = Math.floor(currentFrame / framesPerColumn);
-    const rowIndex = currentFrame % framesPerColumn;
-    const columnLeft = columnIndex * columnWidth;
-    const columnRight = columnLeft + columnWidth;
-    const rowTop = rowIndex * rowHeight;
-    const rowBottom = rowTop + rowHeight;
-    const viewportWidth = el.clientWidth;
-    const viewportHeight = el.clientHeight;
-    const marginX = Math.min(columnWidth * 0.1, 32);
-    const marginY = Math.min(rowHeight * 2, 48);
-
-    let nextLeft = el.scrollLeft;
-    let nextTop = el.scrollTop;
-
-    if (columnLeft < nextLeft + marginX) {
-      nextLeft = Math.max(0, columnLeft - marginX);
-    } else if (columnRight > nextLeft + viewportWidth - marginX) {
-      nextLeft = Math.max(0, columnRight - viewportWidth + marginX);
-    }
-
-    if (rowTop < nextTop + marginY) {
-      nextTop = Math.max(0, rowTop - marginY);
-    } else if (rowBottom > nextTop + viewportHeight - marginY) {
-      nextTop = Math.max(0, rowBottom - viewportHeight + marginY);
-    }
-
-    if (nextLeft !== el.scrollLeft || nextTop !== el.scrollTop) {
-      el.scrollTo({ left: nextLeft, top: nextTop, behavior: 'smooth' });
-    }
-  }, [columnWidth, currentFrame, framesPerColumn, framesPerSheet, isAutoScrollActive, isZoomed, rowHeight]);
+    const marginScale = isScrubbing ? 1.8 : 1.5;
+    scrollToFrame(currentFrame, { behavior: 'auto', marginScale });
+  }, [
+    columnWidth,
+    currentFrame,
+    framesPerSheet,
+    isAutoScrollEnabled,
+    isScrubbing,
+    isZoomed,
+    rowHeight,
+    scrollToFrame,
+  ]);
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
