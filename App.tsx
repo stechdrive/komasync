@@ -1664,6 +1664,46 @@ export default function App() {
     [editTarget, getNormalizedSelection, saveToHistory, tracks]
   );
 
+  const applySpeechOverrideToFrame = useCallback(
+    (frame: number, value: number) => {
+      if (
+        recordingState === RecordingState.RECORDING ||
+        recordingState === RecordingState.PROCESSING ||
+        recordingState === RecordingState.PLAYING
+      ) {
+        return;
+      }
+      saveToHistory();
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
+      setTracks((prev) =>
+        prev.map((track) => {
+          if (!targetSet.has(track.id)) return track;
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+          return {
+            ...track,
+            speechOverrides: applyOverrideRange(baseOverrides, frame, frame, value),
+          };
+        })
+      );
+    },
+    [editTarget, recordingState, saveToHistory, tracks]
+  );
+
+  const stepFrameAfterLabel = useCallback(() => {
+    if (
+      recordingState === RecordingState.RECORDING ||
+      recordingState === RecordingState.PROCESSING ||
+      recordingState === RecordingState.PLAYING
+    ) {
+      return;
+    }
+    const nextFrame = Math.max(0, currentFrameRef.current + 1);
+    currentFrameRef.current = nextFrame;
+    setCurrentFrame(nextFrame);
+    startScrubState(SCRUB_STATE_RESET_MS);
+  }, [recordingState, startScrubState]);
+
   const handleMarkSpeech = useCallback(() => {
     applySpeechOverrideToSelection(1);
   }, [applySpeechOverrideToSelection]);
@@ -1675,6 +1715,16 @@ export default function App() {
   const handleResetSpeechLabel = useCallback(() => {
     applySpeechOverrideToSelection(0);
   }, [applySpeechOverrideToSelection]);
+
+  const handleMarkSpeechFrame = useCallback(() => {
+    applySpeechOverrideToFrame(currentFrameRef.current, 1);
+    stepFrameAfterLabel();
+  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
+
+  const handleMarkNonSpeechFrame = useCallback(() => {
+    applySpeechOverrideToFrame(currentFrameRef.current, -1);
+    stepFrameAfterLabel();
+  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
 
   const handleZoomIn = useCallback(() => {
     setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
@@ -1858,6 +1908,8 @@ export default function App() {
           onStopRecording={handleStopRecording}
           onPlay={handlePlay}
           onPause={handlePause}
+          onMarkSpeechFrame={handleMarkSpeechFrame}
+          onMarkNonSpeechFrame={handleMarkNonSpeechFrame}
         />
       }
     >
