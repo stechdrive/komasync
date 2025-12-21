@@ -91,6 +91,40 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     return 'border-l border-gray-300';
   }, [columnIndex]);
 
+  const selectionOverlay = useMemo(() => {
+    if (selectionStart === null || selectionEnd === null) return null;
+    if (rowHeight <= 0) return null;
+
+    const columnStart = startFrame;
+    const columnEnd = startFrame + framesPerColumn - 1;
+    const rangeStart = Math.max(selectionStart, columnStart);
+    const rangeEnd = Math.min(selectionEnd, columnEnd);
+    if (rangeStart > rangeEnd) return null;
+
+    const isAllTracks = editTarget === 'all';
+    const targetIndex = isAllTracks ? 0 : tracks.findIndex((track) => track.id === editTarget);
+    if (!isAllTracks && targetIndex < 0) return null;
+
+    const left = rulerWidth + (isAllTracks ? 0 : targetIndex * trackColumnWidth);
+    const width = isAllTracks ? trackColumnWidth * tracks.length : trackColumnWidth;
+    const top = (rangeStart - columnStart) * rowHeight;
+    const height = (rangeEnd - rangeStart + 1) * rowHeight;
+
+    return { left, width, top, height };
+  }, [
+    editTarget,
+    framesPerColumn,
+    rowHeight,
+    rulerWidth,
+    selectionEnd,
+    selectionStart,
+    startFrame,
+    trackColumnWidth,
+    tracks,
+  ]);
+
+  const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
+
   useEffect(() => {
     if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
     const pixelRatio = window.devicePixelRatio || 1;
@@ -222,14 +256,8 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 const isSelectionActive = isInSelection && isTargetTrack;
                 const highlightBorder = isActiveTrack ? toRgba(theme.accentHex, 0.75) : undefined;
                 const highlightBg =
-                  isActiveTrack && !isCurrent && !isSelectionActive && !isPastEnd ? toRgba(theme.accentHex, 0.08) : undefined;
+                  isActiveTrack && !isCurrent && !isSelectionActive ? toRgba(theme.accentHex, 0.18) : undefined;
                 const vadColor = toRgba(theme.accentHex, 0.25);
-                const selectionOutline = isSelectionActive
-                  ? [
-                      `inset 0 0 0 2px ${isTargetTrack ? 'rgba(37, 99, 235, 0.9)' : 'rgba(59, 130, 246, 0.65)'}`,
-                      'inset 0 0 0 1px rgba(255, 255, 255, 0.6)',
-                    ]
-                  : [];
 
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
                 const cellCursor = isCurrent ? 'cursor-grab' : 'cursor-pointer';
@@ -245,9 +273,11 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                   ...(highlightBorder
                     ? [`inset 2px 0 0 ${highlightBorder}`, `inset -2px 0 0 ${highlightBorder}`]
                     : []),
-                  ...selectionOutline,
                 ];
                 const cellShadow = shadowParts.length > 0 ? shadowParts.join(', ') : undefined;
+                const highlightOverlay = highlightBg
+                  ? { backgroundImage: `linear-gradient(${highlightBg}, ${highlightBg})` }
+                  : undefined;
 
                 return (
                   <div
@@ -257,7 +287,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                     className={`relative ${cellCursor} ${borderClass} ${bgClass} border-r border-gray-200 box-border`}
                     style={{
                       ...(cellShadow ? { boxShadow: cellShadow } : {}),
-                      ...(highlightBg ? { backgroundColor: highlightBg } : {}),
+                      ...(highlightOverlay ?? {}),
                       touchAction,
                     }}
                   >
@@ -288,6 +318,20 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
           );
         })}
       </div>
+      {selectionOverlay && (
+        <div
+          className="absolute pointer-events-none z-30"
+          style={{
+            top: `${selectionOverlay.top}px`,
+            left: `${selectionOverlay.left}px`,
+            width: `${selectionOverlay.width}px`,
+            height: `${selectionOverlay.height}px`,
+            border: `${selectionBorderWidth}px dotted rgba(37, 99, 235, 0.9)`,
+            borderRadius: '4px',
+            boxSizing: 'border-box',
+          }}
+        />
+      )}
     </div>
   );
 };
