@@ -289,9 +289,9 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
                 const isActiveTrack = activeTrackId === track.id;
                 const theme = getTrackTheme(track.id);
                 const isSelectionActive = isInSelection && isTargetTrack;
-                const highlightBorder = isActiveTrack ? toRgba(theme.accentHex, 0.75) : undefined;
+                const highlightBorder = isActiveTrack ? 'rgba(15, 23, 42, 0.35)' : undefined;
                 const highlightBg =
-                  isActiveTrack && !isCurrent && !isSelectionActive ? toRgba(theme.accentHex, 0.18) : undefined;
+                  isActiveTrack && !isCurrent && !isSelectionActive ? 'rgba(15, 23, 42, 0.06)' : undefined;
                 const vadColor = toRgba(theme.accentHex, 0.25);
 
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
