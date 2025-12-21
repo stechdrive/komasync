@@ -370,7 +370,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (e.target === e.currentTarget) onBackgroundClick?.();
   };
 
-  const getTrackTarget = (target: EventTarget | null): { frame: number; trackId: string } | null => {
+  const getTrackTarget = useCallback((target: EventTarget | null): { frame: number; trackId: string } | null => {
     if (!(target instanceof HTMLElement)) return null;
     const cell = target.closest<HTMLElement>('[data-frame-index][data-track-id]');
     if (!cell) return null;
@@ -381,12 +381,15 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const trackId = cell.dataset.trackId;
     if (!trackId) return null;
     return { frame, trackId };
-  };
+  }, []);
 
-  const getTrackAtPoint = (x: number, y: number): { frame: number; trackId: string } | null => {
-    const el = document.elementFromPoint(x, y);
-    return getTrackTarget(el);
-  };
+  const getTrackAtPoint = useCallback(
+    (x: number, y: number): { frame: number; trackId: string } | null => {
+      const el = document.elementFromPoint(x, y);
+      return getTrackTarget(el);
+    },
+    [getTrackTarget]
+  );
 
   const getRulerTarget = (target: EventTarget | null): { frame: number } | null => {
     if (!(target instanceof HTMLElement)) return null;
