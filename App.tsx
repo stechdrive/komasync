@@ -48,6 +48,7 @@ const FPS = DEFAULT_FPS;
 const SCRUB_PREVIEW_SEC = 0.08;
 const SCRUB_FADE_SEC = 0.01;
 const SCRUB_THROTTLE_MS = 50;
+const SCRUB_STATE_RESET_MS = 200;
 const MIC_SLEEP_MS = 5 * 60 * 1000;
 const MIC_SLEEP_CHECK_MS = 15 * 1000;
 const MIN_SHEET_ZOOM = 1;
@@ -162,6 +163,7 @@ export default function App() {
   const [muteMenu, setMuteMenu] = useState<{ x: number; y: number } | null>(null);
 
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const [vadPreset, setVadPreset] = useState<VadPreset>('normal');
   const [vadStability, setVadStability] = useState(AUTO_VAD_BASE_STABILITY);
   const [vadThresholdScale, setVadThresholdScale] = useState(AUTO_VAD_BASE_THRESHOLD_SCALE);
@@ -212,11 +214,42 @@ export default function App() {
   const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode }[]>([]);
   const scrubLastTimeRef = useRef(0);
   const isScrubbingRef = useRef(false);
+  const scrubStateResetRef = useRef<number | null>(null);
   
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
 
   useViewportHeight();
+
+  const startScrubState = useCallback((autoResetMs?: number) => {
+    if (scrubStateResetRef.current !== null) {
+      window.clearTimeout(scrubStateResetRef.current);
+      scrubStateResetRef.current = null;
+    }
+    setIsScrubbing(true);
+    if (autoResetMs && autoResetMs > 0) {
+      scrubStateResetRef.current = window.setTimeout(() => {
+        scrubStateResetRef.current = null;
+        setIsScrubbing(false);
+      }, autoResetMs);
+    }
+  }, []);
+
+  const stopScrubState = useCallback(() => {
+    if (scrubStateResetRef.current !== null) {
+      window.clearTimeout(scrubStateResetRef.current);
+      scrubStateResetRef.current = null;
+    }
+    setIsScrubbing(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrubStateResetRef.current !== null) {
+        window.clearTimeout(scrubStateResetRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!selection) {
@@ -569,6 +602,7 @@ export default function App() {
         recordingStartFrameRef.current = 0;
         recordingStartTimeRef.current = 0;
         isScrubbingRef.current = false;
+        stopScrubState();
     }
   };
 
@@ -856,6 +890,7 @@ export default function App() {
 
     stopScrubSources();
     isScrubbingRef.current = false;
+    stopScrubState();
     startVuMeter(stream);
 
     const mimeType = getSupportedMimeType();
@@ -1442,6 +1477,7 @@ export default function App() {
 
     stopScrubSources();
     isScrubbingRef.current = false;
+    stopScrubState();
 
     const endFrame = Math.max(0, maxFrames - 1);
     const startFrame = currentFrame >= endFrame ? 0 : currentFrame;
@@ -1628,6 +1664,46 @@ export default function App() {
     [editTarget, getNormalizedSelection, saveToHistory, tracks]
   );
 
+  const applySpeechOverrideToFrame = useCallback(
+    (frame: number, value: number) => {
+      if (
+        recordingState === RecordingState.RECORDING ||
+        recordingState === RecordingState.PROCESSING ||
+        recordingState === RecordingState.PLAYING
+      ) {
+        return;
+      }
+      saveToHistory();
+      const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
+      const targetSet = new Set(targetIds);
+      setTracks((prev) =>
+        prev.map((track) => {
+          if (!targetSet.has(track.id)) return track;
+          const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
+          return {
+            ...track,
+            speechOverrides: applyOverrideRange(baseOverrides, frame, frame, value),
+          };
+        })
+      );
+    },
+    [editTarget, recordingState, saveToHistory, tracks]
+  );
+
+  const stepFrameAfterLabel = useCallback(() => {
+    if (
+      recordingState === RecordingState.RECORDING ||
+      recordingState === RecordingState.PROCESSING ||
+      recordingState === RecordingState.PLAYING
+    ) {
+      return;
+    }
+    const nextFrame = Math.max(0, currentFrameRef.current + 1);
+    currentFrameRef.current = nextFrame;
+    setCurrentFrame(nextFrame);
+    startScrubState(SCRUB_STATE_RESET_MS);
+  }, [recordingState, startScrubState]);
+
   const handleMarkSpeech = useCallback(() => {
     applySpeechOverrideToSelection(1);
   }, [applySpeechOverrideToSelection]);
@@ -1639,6 +1715,16 @@ export default function App() {
   const handleResetSpeechLabel = useCallback(() => {
     applySpeechOverrideToSelection(0);
   }, [applySpeechOverrideToSelection]);
+
+  const handleMarkSpeechFrame = useCallback(() => {
+    applySpeechOverrideToFrame(currentFrameRef.current, 1);
+    stepFrameAfterLabel();
+  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
+
+  const handleMarkNonSpeechFrame = useCallback(() => {
+    applySpeechOverrideToFrame(currentFrameRef.current, -1);
+    stepFrameAfterLabel();
+  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
 
   const handleZoomIn = useCallback(() => {
     setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
@@ -1660,6 +1746,7 @@ export default function App() {
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
     isScrubbingRef.current = true;
+    startScrubState();
     scrubLastTimeRef.current = 0;
     const nextFrame = Math.max(0, Math.floor(frame));
     setCurrentFrame(nextFrame);
@@ -1677,6 +1764,7 @@ export default function App() {
   const handleScrubEnd = () => {
     if (!isScrubbingRef.current) return;
     isScrubbingRef.current = false;
+    stopScrubState();
     stopScrubSources();
   };
 
@@ -1703,6 +1791,7 @@ export default function App() {
         if (isHelpOpen || isMoreOpen) return;
         e.preventDefault();
         if (recordingState === RecordingState.PLAYING) handlePause();
+        startScrubState(SCRUB_STATE_RESET_MS);
 
         const delta = e.key === 'ArrowUp' ? -1 : 1;
         const nextFrame = Math.max(0, currentFrameRef.current + delta);
@@ -1753,6 +1842,7 @@ export default function App() {
     isMoreOpen,
     playScrubPreview,
     recordingState,
+    startScrubState,
   ]);
 
   const framesPerSheet = getFramesPerSheet(FPS);
@@ -1818,6 +1908,8 @@ export default function App() {
           onStopRecording={handleStopRecording}
           onPlay={handlePlay}
           onPause={handlePause}
+          onMarkSpeechFrame={handleMarkSpeechFrame}
+          onMarkNonSpeechFrame={handleMarkNonSpeechFrame}
         />
       }
     >
@@ -1833,6 +1925,7 @@ export default function App() {
         isAutoScrollActive={
           recordingState === RecordingState.PLAYING || recordingState === RecordingState.RECORDING
         }
+        isScrubbing={isScrubbing}
         onFrameTap={handleFrameTap}
         onBackgroundClick={handleBackgroundClick}
         onOpenSelectionMenu={handleOpenSelectionMenu}
