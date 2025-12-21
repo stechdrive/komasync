@@ -25,6 +25,8 @@ type TimesheetColumnProps = {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
+type VadRange = { startRow: number; endRow: number };
+
 const getRowBorderClass = (rowIndex: number, fps: number, isRuler: boolean): string => {
   const frameInSecond = rowIndex + 1;
   const isSecond = frameInSecond % fps === 0;
@@ -85,6 +87,38 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     return Math.max(1, (columnWidth - rulerWidth * 2) / count);
   }, [columnWidth, rulerWidth, tracks.length]);
 
+  const speechData = useMemo(() => {
+    const rowsByTrack = new Map<string, boolean[]>();
+    const rangesByTrack = new Map<string, VadRange[]>();
+
+    tracks.forEach((track) => {
+      const rows: boolean[] = [];
+      for (let i = 0; i < framesPerColumn; i += 1) {
+        rows.push(getEffectiveSpeech(track, startFrame + i));
+      }
+      rowsByTrack.set(track.id, rows);
+
+      const ranges: VadRange[] = [];
+      let rangeStart: number | null = null;
+      rows.forEach((isSpeech, rowIndex) => {
+        if (isSpeech) {
+          if (rangeStart === null) rangeStart = rowIndex;
+          return;
+        }
+        if (rangeStart !== null) {
+          ranges.push({ startRow: rangeStart, endRow: rowIndex - 1 });
+          rangeStart = null;
+        }
+      });
+      if (rangeStart !== null) {
+        ranges.push({ startRow: rangeStart, endRow: rows.length - 1 });
+      }
+      rangesByTrack.set(track.id, ranges);
+    });
+
+    return { rowsByTrack, rangesByTrack };
+  }, [framesPerColumn, startFrame, tracks]);
+
   const columnBoundaryClass = useMemo(() => {
     if (columnIndex === 0) return 'border-l-0';
     if (columnIndex % COLUMNS_PER_SHEET === 0) return 'border-l-4 border-gray-600';
@@ -124,6 +158,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   ]);
 
   const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
+  const vadBorderWidth = clamp(Math.round(rowHeight * 0.08), 1, 2);
 
   useEffect(() => {
     if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
@@ -249,7 +284,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
 
               {/* トラック */}
               {tracks.map((track) => {
-                const isSpeech = getEffectiveSpeech(track, globalFrameIndex);
+                const isSpeech = speechData.rowsByTrack.get(track.id)?.[rowIndex] ?? false;
                 const isTargetTrack = editTarget === 'all' || editTarget === track.id;
                 const isActiveTrack = activeTrackId === track.id;
                 const theme = getTrackTheme(track.id);
@@ -318,9 +353,38 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
           );
         })}
       </div>
+      <div className="absolute inset-0 pointer-events-none z-30">
+        {tracks.map((track, index) => {
+          const ranges = speechData.rangesByTrack.get(track.id) ?? [];
+          if (ranges.length === 0) return null;
+          const outlineColor = toRgba(getTrackTheme(track.id).accentHex, 0.7);
+          const left = rulerWidth + trackColumnWidth * index;
+          const width = trackColumnWidth;
+
+          return ranges.map((range) => {
+            const top = range.startRow * rowHeight;
+            const height = (range.endRow - range.startRow + 1) * rowHeight;
+            return (
+              <div
+                key={`${track.id}-${range.startRow}-${range.endRow}`}
+                className="absolute rounded-sm"
+                style={{
+                  top: `${top}px`,
+                  left: `${left}px`,
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  border: `${vadBorderWidth}px solid`,
+                  borderColor: outlineColor,
+                  boxSizing: 'border-box',
+                }}
+              />
+            );
+          });
+        })}
+      </div>
       {selectionOverlay && (
         <div
-          className="absolute pointer-events-none z-30"
+          className="absolute pointer-events-none z-40"
           style={{
             top: `${selectionOverlay.top}px`,
             left: `${selectionOverlay.left}px`,
