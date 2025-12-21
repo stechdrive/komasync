@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
-import { formatTimecode } from '@/domain/timecode';
+import { formatTimecode, formatTimecodeOneBased } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
 import { getEffectiveSpeech } from '@/services/speechLabels';
 
@@ -147,7 +147,8 @@ const drawSheetToCanvas = (
     ctx.stroke();
   }
 
-  const showAllFrameLabels = config.rowHeight >= 10;
+  const labelStep = config.rowHeight >= 11 ? 1 : config.rowHeight >= 9 ? 6 : config.rowHeight >= 7 ? 12 : 0;
+  const showAllFrameLabels = labelStep === 1;
   const labelFontSize = showAllFrameLabels ? 9 : 10;
 
   // グリッド（横線＋塗り）
@@ -159,7 +160,8 @@ const drawSheetToCanvas = (
     const half = Math.floor(fps / 2);
     const isHalfSecond = half > 0 ? frameInSecond % half === 0 : false;
     const isSixFrame = frameInSecond % 6 === 0;
-    const showFrameLabel = showAllFrameLabels || frameInSecond === 1 || frameInSecond % 6 === 0;
+    const showFrameLabel =
+      labelStep === 1 || frameInSecond === 1 || (labelStep > 1 && frameInSecond % labelStep === 0);
 
     // 横線
     ctx.strokeStyle = isSecond ? '#111827' : isHalfSecond ? '#9ca3af' : isSixFrame ? '#d1d5db' : '#e5e7eb';
@@ -178,11 +180,11 @@ const drawSheetToCanvas = (
         const colX = gridLeft + col * columnWidth;
         const localFrame = col * framesPerColumn + frameInSecond;
         const rightRulerLeft = colX + config.rulerWidth + config.trackWidth * tracks.length;
-        const globalFrame = sheetStartFrame + col * framesPerColumn + row + 1;
+        const globalFrameIndex = sheetStartFrame + col * framesPerColumn + row;
 
         ctx.fillText(String(localFrame), colX + config.rulerWidth / 2, y + config.rowHeight / 2);
         ctx.fillText(
-          String(globalFrame),
+          formatTimecodeOneBased(globalFrameIndex, fps),
           rightRulerLeft + config.rightRulerWidth / 2,
           y + config.rowHeight / 2
         );
