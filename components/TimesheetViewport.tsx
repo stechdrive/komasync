@@ -30,6 +30,9 @@ type TimesheetViewportProps = {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const LONG_PRESS_MENU_MS = 700;
+const EDGE_SCROLL_SIZE = 32;
+const EDGE_SCROLL_MAX_SPEED = 20;
+const EDGE_SCROLL_OFFSET = 10;
 
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
@@ -99,6 +102,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [wrapCue, setWrapCue] = useState<'up' | 'down' | null>(null);
+  const wrapCueRef = useRef<'up' | 'down' | null>(null);
+  const autoScrollRef = useRef<{
+    rafId: number | null;
+    pointerX: number;
+    pointerY: number;
+    pointerType: string;
+  }>({ rafId: null, pointerX: 0, pointerY: 0, pointerType: 'mouse' });
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onSelectionScrubRef = useRef(onSelectionScrub);
   const isIOS = useMemo(() => {
     if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
     const ua = navigator.userAgent;
@@ -112,6 +125,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   useEffect(() => {
     selectionRangeRef.current = selection;
   }, [selection]);
+
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
+  useEffect(() => {
+    onSelectionScrubRef.current = onSelectionScrub;
+  }, [onSelectionScrub]);
 
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
@@ -181,6 +202,24 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
+
+  const scrollMetricsRef = useRef({
+    columnWidth,
+    rowHeight,
+    columnHeight,
+    framesPerColumn,
+    totalColumns,
+  });
+
+  useEffect(() => {
+    scrollMetricsRef.current = {
+      columnWidth,
+      rowHeight,
+      columnHeight,
+      framesPerColumn,
+      totalColumns,
+    };
+  }, [columnHeight, columnWidth, framesPerColumn, rowHeight, totalColumns]);
 
   const scrollToFrame = useCallback(
     (
@@ -372,6 +411,146 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return frame;
   };
 
+  const updateWrapCue = useCallback((next: 'up' | 'down' | null) => {
+    if (wrapCueRef.current === next) return;
+    wrapCueRef.current = next;
+    setWrapCue(next);
+  }, []);
+
+  const updateSelectionAtPoint = useCallback(
+    (clientX: number, clientY: number, pointerType: string) => {
+      if (selectionAnchorRef.current === null) return;
+      const target = getTrackAtPoint(clientX, clientY);
+      if (!target) return;
+      const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
+      selectionRangeRef.current = range;
+      onSelectionChangeRef.current?.(range);
+      if (pointerType === 'touch' && target.trackId) {
+        onSelectionScrubRef.current?.(target.frame, target.trackId);
+      }
+    },
+    [getTrackAtPoint]
+  );
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRef.current.rafId !== null) {
+      cancelAnimationFrame(autoScrollRef.current.rafId);
+      autoScrollRef.current.rafId = null;
+    }
+    updateWrapCue(null);
+  }, [updateWrapCue]);
+
+  const runAutoScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !isSelectingRef.current) {
+      stopAutoScroll();
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const { pointerX, pointerY, pointerType } = autoScrollRef.current;
+    const edge = EDGE_SCROLL_SIZE;
+
+    let dirX = 0;
+    let dirY = 0;
+    let speedX = 0;
+    let speedY = 0;
+
+    if (pointerX < rect.left + edge) {
+      dirX = -1;
+      speedX = ((rect.left + edge - pointerX) / edge) * EDGE_SCROLL_MAX_SPEED;
+    } else if (pointerX > rect.right - edge) {
+      dirX = 1;
+      speedX = ((pointerX - (rect.right - edge)) / edge) * EDGE_SCROLL_MAX_SPEED;
+    }
+
+    if (pointerY < rect.top + edge) {
+      dirY = -1;
+      speedY = ((rect.top + edge - pointerY) / edge) * EDGE_SCROLL_MAX_SPEED;
+    } else if (pointerY > rect.bottom - edge) {
+      dirY = 1;
+      speedY = ((pointerY - (rect.bottom - edge)) / edge) * EDGE_SCROLL_MAX_SPEED;
+    }
+
+    if (dirX === 0 && dirY === 0) {
+      stopAutoScroll();
+      return;
+    }
+
+    const { columnWidth, columnHeight, rowHeight, framesPerColumn, totalColumns } = scrollMetricsRef.current;
+    const maxScrollTop = Math.max(0, columnHeight - el.clientHeight);
+    const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
+
+    let nextLeft = el.scrollLeft;
+    let nextTop = el.scrollTop;
+    let wrapDirection: 'up' | 'down' | null = null;
+    let didWrap = false;
+
+    if (dirY > 0) {
+      if (el.scrollTop < maxScrollTop - 0.5) {
+        nextTop = Math.min(maxScrollTop, el.scrollTop + speedY);
+      } else if (el.scrollLeft < maxScrollLeft - 0.5) {
+        nextLeft = Math.min(maxScrollLeft, el.scrollLeft + columnWidth);
+        nextTop = 0;
+        wrapDirection = 'down';
+        didWrap = true;
+      }
+    } else if (dirY < 0) {
+      if (el.scrollTop > 0.5) {
+        nextTop = Math.max(0, el.scrollTop - speedY);
+      } else if (el.scrollLeft > 0.5) {
+        nextLeft = Math.max(0, el.scrollLeft - columnWidth);
+        nextTop = maxScrollTop;
+        wrapDirection = 'up';
+        didWrap = true;
+      }
+    }
+
+    if (!didWrap && dirX !== 0) {
+      nextLeft = clamp(el.scrollLeft + dirX * speedX, 0, maxScrollLeft);
+    }
+
+    if (nextLeft !== el.scrollLeft) el.scrollLeft = nextLeft;
+    if (nextTop !== el.scrollTop) el.scrollTop = nextTop;
+
+    let cue: 'up' | 'down' | null = null;
+    if (dirY > 0 && el.scrollTop >= maxScrollTop - 0.5 && el.scrollLeft < maxScrollLeft - 0.5) {
+      cue = 'down';
+    } else if (dirY < 0 && el.scrollTop <= 0.5 && el.scrollLeft > 0.5) {
+      cue = 'up';
+    }
+    updateWrapCue(cue);
+
+    const edgeOffset = Math.min(EDGE_SCROLL_OFFSET, Math.max(2, rowHeight * 0.4));
+    let effectiveX = pointerX;
+    let effectiveY = pointerY;
+    if (dirX !== 0) {
+      effectiveX = dirX > 0 ? rect.right - edgeOffset : rect.left + edgeOffset;
+    }
+    if (wrapDirection === 'down') {
+      effectiveY = rect.top + edgeOffset;
+    } else if (wrapDirection === 'up') {
+      effectiveY = rect.bottom - edgeOffset;
+    } else if (dirY !== 0) {
+      effectiveY = dirY > 0 ? rect.bottom - edgeOffset : rect.top + edgeOffset;
+    }
+
+    if (framesPerColumn > 0 && rowHeight > 0) {
+      updateSelectionAtPoint(effectiveX, effectiveY, pointerType);
+    }
+
+    autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+  }, [stopAutoScroll, updateSelectionAtPoint, updateWrapCue]);
+
+  const startAutoScroll = useCallback((clientX: number, clientY: number, pointerType: string) => {
+    autoScrollRef.current.pointerX = clientX;
+    autoScrollRef.current.pointerY = clientY;
+    autoScrollRef.current.pointerType = pointerType;
+    if (autoScrollRef.current.rafId === null) {
+      autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
+    }
+  }, [runAutoScroll]);
+
   const isFrameInSelection = (frame: number): boolean => {
     const range = selectionRangeRef.current;
     if (!range) return false;
@@ -424,6 +603,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     pendingTapRef.current = null;
     scrubPendingRef.current = null;
     stopPan();
+    stopAutoScroll();
     if (isScrubbingRef.current) onScrubEnd?.();
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
@@ -765,6 +945,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (e.pointerType === 'touch' && onSelectionScrub) {
         onSelectionScrub(target.frame, target.trackId);
       }
+      startAutoScroll(e.clientX, e.clientY, e.pointerType);
       return;
     }
 
@@ -844,6 +1025,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       isSelectingRef.current = false;
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
+      stopAutoScroll();
       return;
     }
 
@@ -898,7 +1080,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   return (
-    <div className="h-full w-full bg-gray-100 select-none">
+    <div className="relative h-full w-full bg-gray-100 select-none">
       <div
         ref={scrollRef}
         className="h-full w-full overflow-x-auto overflow-y-auto snap-x snap-proximity overscroll-x-contain overscroll-y-contain cursor-default"
@@ -941,6 +1123,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           )}
         </div>
       </div>
+      {wrapCue === 'up' && (
+        <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
+          ↑ 続き
+        </div>
+      )}
+      {wrapCue === 'down' && (
+        <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
+          ↓ 続き
+        </div>
+      )}
     </div>
   );
 };
