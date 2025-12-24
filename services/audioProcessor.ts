@@ -46,6 +46,27 @@ export const processAudioBuffer = (
   return frames;
 };
 
+export const mixToMonoAudioBuffer = (audioBuffer: AudioBuffer): AudioBuffer => {
+  if (audioBuffer.numberOfChannels <= 1) return audioBuffer;
+
+  const output = new AudioBuffer({
+    length: audioBuffer.length,
+    numberOfChannels: 1,
+    sampleRate: audioBuffer.sampleRate,
+  });
+
+  const mixed = output.getChannelData(0);
+  const scale = 1 / audioBuffer.numberOfChannels;
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const src = audioBuffer.getChannelData(channel);
+    for (let i = 0; i < src.length; i++) {
+      mixed[i] += src[i] * scale;
+    }
+  }
+
+  return output;
+};
+
 export const blobToAudioBuffer = async (blob: Blob): Promise<AudioBuffer> => {
   if (!blob || blob.size === 0) {
     throw new Error("Audio blob is empty");
@@ -65,7 +86,7 @@ export const blobToAudioBuffer = async (blob: Blob): Promise<AudioBuffer> => {
   const ctx = new AudioContextClass();
   try {
     // Handle both Promise-based and Callback-based decodeAudioData for broader browser support
-    return await new Promise<AudioBuffer>((resolve, reject) => {
+    const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
       let settled = false;
       const doResolve = (buf: AudioBuffer) => { if (!settled) { settled = true; resolve(buf); } };
       const doReject = (err: unknown) => { 
@@ -92,6 +113,7 @@ export const blobToAudioBuffer = async (blob: Blob): Promise<AudioBuffer> => {
         doReject(e);
       }
     });
+    return mixToMonoAudioBuffer(decoded);
   } finally {
     // CRITICAL: Close the context to release hardware resources
     // Browsers have a limit (usually 6) on active AudioContexts

@@ -893,10 +893,24 @@ export default function App() {
     stopScrubState();
     startVuMeter(stream);
 
+    const cleanupRecordingResources = () => {
+      stopVuMeter();
+      stopAllSources();
+      cancelAnimationFrame(animationFrameRef.current);
+      stopMicStream();
+      mediaRecorderRef.current = null;
+      setRecordingState(RecordingState.IDLE);
+    };
+
     const mimeType = getSupportedMimeType();
     const options = mimeType ? { mimeType } : undefined;
 
-    mediaRecorderRef.current = new MediaRecorder(stream, options);
+    try {
+      mediaRecorderRef.current = new MediaRecorder(stream, options);
+    } catch (error) {
+      cleanupRecordingResources();
+      throw error;
+    }
     audioChunksRef.current = [];
 
     // Mark the frame where recording started (Punch-in support)
@@ -943,8 +957,20 @@ export default function App() {
       cancelAnimationFrame(animationFrameRef.current);
     };
 
+    mediaRecorderRef.current.onerror = (event) => {
+      const err = event.error ?? new Error('MediaRecorderでエラーが発生しました。');
+      console.error('MediaRecorder error:', err);
+      cleanupRecordingResources();
+      alert('録音中にエラーが発生しました。');
+    };
+
     // Start Recording
-    mediaRecorderRef.current.start();
+    try {
+      mediaRecorderRef.current.start();
+    } catch (error) {
+      cleanupRecordingResources();
+      throw error;
+    }
     setRecordingState(RecordingState.RECORDING);
 
     // Start Playback from CURRENT frame (not 0) if enabled
@@ -1007,7 +1033,6 @@ export default function App() {
   const loadAudioBlobToTrack = async (blob: Blob, trackId: string, insertAtFrame: number = 0) => {
     try {
       if (blob.size === 0) return; // Skip empty
-      saveToHistory(); // Save before loading new audio
 
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
          const AudioContextClass = getAudioContextClass();
@@ -1042,6 +1067,7 @@ export default function App() {
         const overwritten = overwriteOverrideRange(baseOverrides, insertAtFrame, clearedSlice);
         return resizeSpeechOverrides(overwritten, getFrameCountFromBuffer(finalBuffer));
       })();
+      saveToHistory(); // 変更が確定する直前で履歴に保存する
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
         frames: createEmptyFrames(finalBuffer),
