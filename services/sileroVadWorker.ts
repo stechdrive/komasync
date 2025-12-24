@@ -276,7 +276,7 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
   const speechRatio = clamp(tuning.speechRatio ?? 0.5, 0.1, 0.95);
   const holdFrames = Math.max(1, Math.round(tuning.holdFrames ?? 2));
 
-  const totalFrames = Math.floor((samples.length * fps) / sampleRate);
+  const totalFrames = Math.round((samples.length * fps) / sampleRate);
   const frames: FrameData[] = [];
 
   let active = false;
