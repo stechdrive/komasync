@@ -12,7 +12,7 @@ export const processAudioBuffer = (
 ): FrameData[] => {
   const channelData = audioBuffer.getChannelData(0); // Use mono or left channel
   const sampleRate = audioBuffer.sampleRate;
-  const totalFrames = Math.floor((channelData.length * fps) / sampleRate);
+  const totalFrames = Math.round((channelData.length * fps) / sampleRate);
   
   const frames: FrameData[] = [];
 

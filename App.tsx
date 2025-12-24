@@ -319,7 +319,7 @@ export default function App() {
 
   const createEmptyFrames = useCallback((audioBuffer: AudioBuffer | null): FrameData[] => {
     if (!audioBuffer) return [];
-    const totalFrames = Math.floor((audioBuffer.length * FPS) / audioBuffer.sampleRate);
+    const totalFrames = Math.round((audioBuffer.length * FPS) / audioBuffer.sampleRate);
     const frames: FrameData[] = [];
     for (let i = 0; i < totalFrames; i++) {
       frames.push({
@@ -334,7 +334,7 @@ export default function App() {
 
   const getFrameCountFromBuffer = useCallback((audioBuffer: AudioBuffer | null): number => {
     if (!audioBuffer) return 0;
-    return Math.floor((audioBuffer.length * FPS) / audioBuffer.sampleRate);
+    return Math.round((audioBuffer.length * FPS) / audioBuffer.sampleRate);
   }, []);
 
   const createSpeechOverridesForBuffer = useCallback(
