@@ -144,11 +144,20 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const el = scrollRef.current;
     if (!el) return;
 
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      setViewportWidth(rect?.width ?? 0);
-      setViewportHeight(rect?.height ?? 0);
-    });
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      setViewportWidth(rect.width);
+      setViewportHeight(rect.height);
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }
+
+    const ro = new ResizeObserver(() => updateSize());
     ro.observe(el);
 
     return () => ro.disconnect();

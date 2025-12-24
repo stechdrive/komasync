@@ -1,27 +1,19 @@
 import JSZip from 'jszip';
 import { Track } from '../types';
+import { mixToMonoAudioBuffer } from './audioProcessor';
 
 /**
  * Encodes an AudioBuffer to a WAV format (Blob)
  * Converts Float32 audio data to Int16 PCM standard WAV
  */
 const audioBufferToWav = (buffer: AudioBuffer, targetLength?: number): Blob => {
-  const numChannels = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
+  const monoBuffer = mixToMonoAudioBuffer(buffer);
+  const sampleRate = monoBuffer.sampleRate;
   const bitDepth = 16;
 
-  const channelLength = targetLength && targetLength > buffer.length ? targetLength : buffer.length;
-
-  let result;
-  if (numChannels === 2) {
-    const left = padChannel(buffer.getChannelData(0), channelLength);
-    const right = padChannel(buffer.getChannelData(1), channelLength);
-    result = interleave(left, right);
-  } else {
-    result = padChannel(buffer.getChannelData(0), channelLength);
-  }
-
-  return encodeWAV(result, numChannels, sampleRate, bitDepth);
+  const channelLength = targetLength && targetLength > monoBuffer.length ? targetLength : monoBuffer.length;
+  const result = padChannel(monoBuffer.getChannelData(0), channelLength);
+  return encodeWAV(result, 1, sampleRate, bitDepth);
 };
 
 const padChannel = (input: Float32Array, targetLength: number): Float32Array => {
@@ -29,21 +21,6 @@ const padChannel = (input: Float32Array, targetLength: number): Float32Array => 
   const padded = new Float32Array(targetLength);
   padded.set(input);
   return padded;
-};
-
-const interleave = (inputL: Float32Array, inputR: Float32Array) => {
-  const length = inputL.length + inputR.length;
-  const result = new Float32Array(length);
-
-  let index = 0;
-  let inputIndex = 0;
-
-  while (index < length) {
-    result[index++] = inputL[inputIndex];
-    result[index++] = inputR[inputIndex];
-    inputIndex++;
-  }
-  return result;
 };
 
 const encodeWAV = (samples: Float32Array, numChannels: number, sampleRate: number, bitDepth: number) => {
