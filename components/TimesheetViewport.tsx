@@ -244,21 +244,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     };
   }, [updateRectRef]);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || columnWidth <= 0) return;
-    const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
-    const currentLeft = el.scrollLeft;
-    const nextLeft = Math.min(currentLeft, maxScrollLeft);
-    if (nextLeft !== currentLeft) {
-      el.scrollLeft = nextLeft;
-    }
-    if (scrollLeftRef.current !== nextLeft) {
-      scrollLeftRef.current = nextLeft;
-      setScrollLeft(nextLeft);
-    }
-  }, [columnWidth, totalColumns]);
-
   const baseColumnWidth = useMemo(() => {
     if (viewportWidth <= 0) return 1;
     return Math.max(1, viewportWidth / 2);
@@ -279,6 +264,21 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (viewportHeight <= 0) return 0;
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || columnWidth <= 0) return;
+    const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
+    const currentLeft = el.scrollLeft;
+    const nextLeft = Math.min(currentLeft, maxScrollLeft);
+    if (nextLeft !== currentLeft) {
+      el.scrollLeft = nextLeft;
+    }
+    if (scrollLeftRef.current !== nextLeft) {
+      scrollLeftRef.current = nextLeft;
+      setScrollLeft(nextLeft);
+    }
+  }, [columnWidth, totalColumns]);
 
   const trackRenderData = useMemo<TrackRenderData[]>(
     () =>

@@ -1271,6 +1271,48 @@ export default function App() {
     return { startFrame, endFrame };
   }, []);
 
+  const playSelectionScrub = useCallback(
+    (frame: number, trackId: string) => {
+      if (editTarget === 'all') return;
+      if (
+        recordingState === RecordingState.RECORDING ||
+        recordingState === RecordingState.PROCESSING ||
+        recordingState === RecordingState.PLAYING
+      ) {
+        return;
+      }
+      playScrubPreview(frame, trackId);
+    },
+    [editTarget, playScrubPreview, recordingState]
+  );
+
+  const flushSelectionUpdates = useCallback(
+    (forceRange?: SelectionRange | null) => {
+      if (selectionRafRef.current !== null) {
+        cancelAnimationFrame(selectionRafRef.current);
+        selectionRafRef.current = null;
+      }
+
+      const hasForcedRange = forceRange !== undefined;
+      const pendingRange = hasForcedRange ? forceRange : selectionPendingRef.current;
+      if (hasForcedRange || selectionPendingRef.current !== undefined) {
+        selectionPendingRef.current = undefined;
+        commitSelectionState(pendingRange ?? null);
+      }
+
+      const scrubPending = selectionScrubPendingRef.current;
+      if (scrubPending) {
+        const last = selectionScrubLastRef.current;
+        if (!last || last.frame !== scrubPending.frame || last.trackId !== scrubPending.trackId) {
+          selectionScrubLastRef.current = scrubPending;
+          playSelectionScrub(scrubPending.frame, scrubPending.trackId);
+        }
+        selectionScrubPendingRef.current = null;
+      }
+    },
+    [commitSelectionState, playSelectionScrub]
+  );
+
   const handleCut = useCallback(async () => {
     flushSelectionUpdates();
     const range = getNormalizedSelection();
@@ -1807,48 +1849,6 @@ export default function App() {
       setEditTarget('all');
     }
   };
-
-  const playSelectionScrub = useCallback(
-    (frame: number, trackId: string) => {
-      if (editTarget === 'all') return;
-      if (
-        recordingState === RecordingState.RECORDING ||
-        recordingState === RecordingState.PROCESSING ||
-        recordingState === RecordingState.PLAYING
-      ) {
-        return;
-      }
-      playScrubPreview(frame, trackId);
-    },
-    [editTarget, playScrubPreview, recordingState]
-  );
-
-  const flushSelectionUpdates = useCallback(
-    (forceRange?: SelectionRange | null) => {
-      if (selectionRafRef.current !== null) {
-        cancelAnimationFrame(selectionRafRef.current);
-        selectionRafRef.current = null;
-      }
-
-      const hasForcedRange = forceRange !== undefined;
-      const pendingRange = hasForcedRange ? forceRange : selectionPendingRef.current;
-      if (hasForcedRange || selectionPendingRef.current !== undefined) {
-        selectionPendingRef.current = undefined;
-        commitSelectionState(pendingRange ?? null);
-      }
-
-      const scrubPending = selectionScrubPendingRef.current;
-      if (scrubPending) {
-        const last = selectionScrubLastRef.current;
-        if (!last || last.frame !== scrubPending.frame || last.trackId !== scrubPending.trackId) {
-          selectionScrubLastRef.current = scrubPending;
-          playSelectionScrub(scrubPending.frame, scrubPending.trackId);
-        }
-        selectionScrubPendingRef.current = null;
-      }
-    },
-    [commitSelectionState, playSelectionScrub]
-  );
 
   const scheduleSelectionUpdate = useCallback(
     (range: SelectionRange | null) => {
