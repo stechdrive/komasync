@@ -41,10 +41,11 @@ import { TransportDock } from './components/TransportDock';
 import { useViewportHeight } from './hooks/useViewportHeight';
 import { FrameData, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
-import { DEFAULT_FPS, getFramesPerSheet } from './domain/timesheet';
+import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
 
 const FPS = DEFAULT_FPS;
+const FRAMES_PER_COLUMN = getFramesPerColumn(FPS);
 const SCRUB_PREVIEW_SEC = 0.08;
 const SCRUB_FADE_SEC = 0.01;
 const SCRUB_THROTTLE_MS = 50;
@@ -193,6 +194,9 @@ export default function App() {
   const selectionScrubPendingRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionScrubLastRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionRafRef = useRef<number | null>(null);
+  const maxFramesRef = useRef(0);
+  const virtualMaxFramesRef = useRef(0);
+  const [virtualMaxFrames, setVirtualMaxFrames] = useState(0);
 
   const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -300,14 +304,38 @@ export default function App() {
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
 
   useEffect(() => {
+    maxFramesRef.current = maxFrames;
+    const baseFrame = Math.max(0, Math.floor(currentFrameRef.current));
+    const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
+    const required = Math.max(maxFrames, (columnIndex + 1) * FRAMES_PER_COLUMN);
+    if (required !== virtualMaxFramesRef.current) {
+      virtualMaxFramesRef.current = required;
+      setVirtualMaxFrames(required);
+    }
+  }, [maxFrames]);
+
+  useEffect(() => {
     currentFrameRef.current = currentFrame;
   }, [currentFrame]);
 
-  const commitCurrentFrame = useCallback((nextFrame: number) => {
-    const clampedFrame = Math.max(0, Math.floor(nextFrame));
-    currentFrameRef.current = clampedFrame;
-    setCurrentFrame(clampedFrame);
+  const bumpVirtualMaxFrames = useCallback((frame: number) => {
+    const baseFrame = Math.max(0, Math.floor(frame));
+    const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
+    const required = Math.max(maxFramesRef.current, (columnIndex + 1) * FRAMES_PER_COLUMN);
+    if (required <= virtualMaxFramesRef.current) return;
+    virtualMaxFramesRef.current = required;
+    setVirtualMaxFrames(required);
   }, []);
+
+  const commitCurrentFrame = useCallback(
+    (nextFrame: number) => {
+      const clampedFrame = Math.max(0, Math.floor(nextFrame));
+      currentFrameRef.current = clampedFrame;
+      setCurrentFrame(clampedFrame);
+      bumpVirtualMaxFrames(clampedFrame);
+    },
+    [bumpVirtualMaxFrames]
+  );
 
   const commitSelectionState = useCallback((range: SelectionRange | null) => {
     const prev = selectionStateRef.current;
@@ -1986,8 +2014,12 @@ export default function App() {
     startScrubState();
     scrubLastTimeRef.current = 0;
     const nextFrame = Math.max(0, Math.floor(frame));
+    if (scrubRafRef.current !== null) {
+      cancelAnimationFrame(scrubRafRef.current);
+      scrubRafRef.current = null;
+    }
+    scrubFramePendingRef.current = null;
     scrubFrameLastRef.current = null;
-    flushScrubFrame(null);
     commitScrubFrame(nextFrame);
   };
 
@@ -2154,6 +2186,7 @@ export default function App() {
       <TimesheetViewport
         tracks={tracks}
         currentFrame={currentFrame}
+        virtualMaxFrames={virtualMaxFrames}
         editTarget={editTarget}
         selection={selection}
         fps={FPS}

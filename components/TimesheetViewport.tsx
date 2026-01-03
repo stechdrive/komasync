@@ -7,6 +7,7 @@ import { EditTarget, SelectionRange } from '@/domain/editTypes';
 type TimesheetViewportProps = {
   tracks: Track[];
   currentFrame: number;
+  virtualMaxFrames: number;
   editTarget: EditTarget;
   selection: SelectionRange | null;
   fps: number;
@@ -43,6 +44,7 @@ const VISIBLE_COLUMNS = 2;
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
   currentFrame,
+  virtualMaxFrames: virtualMaxFramesProp,
   editTarget,
   selection,
   fps,
@@ -174,7 +176,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
   const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
-  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1);
+  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1, virtualMaxFramesProp ?? 0);
   const totalColumns = Math.max(2, Math.ceil(virtualMaxFrames / framesPerColumn));
 
   useEffect(() => {
@@ -246,10 +248,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const el = scrollRef.current;
     if (!el || columnWidth <= 0) return;
     const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
-    const nextLeft = Math.min(scrollLeftRef.current, maxScrollLeft);
-    if (nextLeft !== scrollLeftRef.current) {
-      scrollLeftRef.current = nextLeft;
+    const currentLeft = el.scrollLeft;
+    const nextLeft = Math.min(currentLeft, maxScrollLeft);
+    if (nextLeft !== currentLeft) {
       el.scrollLeft = nextLeft;
+    }
+    if (scrollLeftRef.current !== nextLeft) {
+      scrollLeftRef.current = nextLeft;
       setScrollLeft(nextLeft);
     }
   }, [columnWidth, totalColumns]);
@@ -1158,8 +1163,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     updateRectRef();
     updatePointer(e);
     const scrollEl = scrollRef.current;
-    if (allowSingleFingerPan && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
+    if (
+      scrollEl?.setPointerCapture &&
+      (e.pointerType !== 'mouse' || e.button === 0) &&
+      !scrollEl.hasPointerCapture?.(e.pointerId)
+    ) {
       scrollEl.setPointerCapture(e.pointerId);
+    }
+    if (allowSingleFingerPan && e.pointerType !== 'mouse' && scrollEl) {
       panStartRef.current = {
         x: e.clientX,
         y: e.clientY,
