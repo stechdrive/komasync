@@ -21,6 +21,7 @@ type TimesheetViewportProps = {
   onOpenSelectionMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
   onSelectionScrub?: (frame: number, trackId: string) => void;
+  onSelectionCommit?: () => void;
   onTrackSelect?: (trackId: string) => void;
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
@@ -56,6 +57,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onOpenSelectionMenu,
   onSelectionChange,
   onSelectionScrub,
+  onSelectionCommit,
   onTrackSelect,
   onScrubStart,
   onScrubMove,
@@ -1017,6 +1019,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const cancelPointerInteraction = () => {
+    const wasSelecting = isSelectingRef.current;
     clearLongPressTimer();
     longPressPointRef.current = null;
     pendingTapRef.current = null;
@@ -1027,6 +1030,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
+    if (wasSelecting) onSelectionCommit?.();
   };
 
   const stopPinch = () => {
@@ -1449,6 +1453,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       stopAutoScroll();
+      onSelectionCommit?.();
       return;
     }
 

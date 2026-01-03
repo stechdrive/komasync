@@ -146,6 +146,12 @@ const getErrorName = (error: unknown): string => {
   return '';
 };
 
+const areSelectionRangesEqual = (a: SelectionRange | null, b: SelectionRange | null): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.startFrame === b.startFrame && a.endFrame === b.endFrame;
+};
+
 export default function App() {
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
   
@@ -181,6 +187,12 @@ export default function App() {
   // Selection State
   const [selection, setSelection] = useState<SelectionRange | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
+  const selectionRef = useRef<SelectionRange | null>(null);
+  const selectionStateRef = useRef<SelectionRange | null>(null);
+  const selectionPendingRef = useRef<SelectionRange | null>(null);
+  const selectionScrubPendingRef = useRef<{ frame: number; trackId: string } | null>(null);
+  const selectionScrubLastRef = useRef<{ frame: number; trackId: string } | null>(null);
+  const selectionRafRef = useRef<number | null>(null);
 
   const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -258,6 +270,20 @@ export default function App() {
     }
   }, [selection]);
 
+  useEffect(() => {
+    selectionRef.current = selection;
+    selectionStateRef.current = selection;
+  }, [selection]);
+
+  useEffect(() => {
+    return () => {
+      if (selectionRafRef.current !== null) {
+        cancelAnimationFrame(selectionRafRef.current);
+        selectionRafRef.current = null;
+      }
+    };
+  }, []);
+
   // Stats (Calculate total max duration across all tracks)
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
 
@@ -270,6 +296,26 @@ export default function App() {
     currentFrameRef.current = clampedFrame;
     setCurrentFrame(clampedFrame);
   }, []);
+
+  const commitSelectionState = useCallback((range: SelectionRange | null) => {
+    const prev = selectionStateRef.current;
+    selectionStateRef.current = range;
+    selectionRef.current = range;
+    if (areSelectionRangesEqual(prev, range)) return;
+    setSelection(range);
+  }, []);
+
+  const clearSelectionImmediate = useCallback(() => {
+    if (selectionRafRef.current !== null) {
+      cancelAnimationFrame(selectionRafRef.current);
+      selectionRafRef.current = null;
+    }
+    selectionPendingRef.current = null;
+    selectionScrubPendingRef.current = null;
+    selectionScrubLastRef.current = null;
+    commitSelectionState(null);
+    setSelectionMenu(null);
+  }, [commitSelectionState]);
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -518,7 +564,7 @@ export default function App() {
       );
       setTracks(nextTracks);
       // Reset selection to avoid ghost selections
-      setSelection(null);
+      clearSelectionImmediate();
       nextTracks.forEach((track) => {
         if (track.audioBuffer) {
           scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
@@ -529,6 +575,7 @@ export default function App() {
     }
     setHistoryPast(newPast);
   }, [
+    clearSelectionImmediate,
     createEmptyFrames,
     getFrameCountFromBuffer,
     historyPast,
@@ -563,7 +610,7 @@ export default function App() {
           : { ...track, frames: [], speechOverrides: [] }
       );
       setTracks(nextTracks);
-      setSelection(null);
+      clearSelectionImmediate();
       nextTracks.forEach((track) => {
         if (track.audioBuffer) {
           scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
@@ -574,6 +621,7 @@ export default function App() {
     }
     setHistoryFuture(newFuture);
   }, [
+    clearSelectionImmediate,
     createEmptyFrames,
     getFrameCountFromBuffer,
     historyFuture,
@@ -603,7 +651,7 @@ export default function App() {
         setEditTarget('1');
         lastSingleTrackIdRef.current = '1';
         commitCurrentFrame(0);
-        setSelection(null);
+        clearSelectionImmediate();
         setClipboardClip(null);
         setRecordingState(RecordingState.IDLE);
         recordingStartFrameRef.current = 0;
@@ -645,7 +693,7 @@ export default function App() {
   };
   
   const handleBackgroundClick = () => {
-    setSelection(null);
+    clearSelectionImmediate();
   };
 
   const handleOpenMuteMenu = useCallback((point: { x: number; y: number }) => {
@@ -1099,7 +1147,7 @@ export default function App() {
       setRecordingState(RecordingState.IDLE);
       // Do not reset current frame to 0, let user stay where they are or seek manually
       // setCurrentFrame(0); 
-      setSelection(null);
+      clearSelectionImmediate();
     } catch (e: unknown) {
       console.error("Error loading audio blob:", e);
       // More user friendly error
@@ -1132,13 +1180,15 @@ export default function App() {
   }, [tracks]);
 
   const getNormalizedSelection = useCallback((): { startFrame: number; endFrame: number } | null => {
-    if (!selection) return null;
-    const startFrame = Math.max(0, Math.floor(Math.min(selection.startFrame, selection.endFrame)));
-    const endFrame = Math.max(startFrame, Math.floor(Math.max(selection.startFrame, selection.endFrame)));
+    const currentSelection = selectionRef.current;
+    if (!currentSelection) return null;
+    const startFrame = Math.max(0, Math.floor(Math.min(currentSelection.startFrame, currentSelection.endFrame)));
+    const endFrame = Math.max(startFrame, Math.floor(Math.max(currentSelection.startFrame, currentSelection.endFrame)));
     return { startFrame, endFrame };
-  }, [selection]);
+  }, []);
 
   const handleCut = useCallback(async () => {
+    flushSelectionUpdates();
     const range = getNormalizedSelection();
     if (!range) return;
 
@@ -1195,14 +1245,16 @@ export default function App() {
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setClipboardClip(nextClipboard);
-      setSelection(null);
+      clearSelectionImmediate();
     } catch (error) {
       console.error('Cut failed:', error);
       alert('切り取り操作に失敗しました。');
     }
   }, [
+    clearSelectionImmediate,
     createEmptyFrames,
     editTarget,
+    flushSelectionUpdates,
     getNormalizedSelection,
     getProjectSampleRate,
     handlePause,
@@ -1216,6 +1268,7 @@ export default function App() {
   ]);
 
   const handleDeleteSelection = async () => {
+    flushSelectionUpdates();
     const range = getNormalizedSelection();
     if (!range) return;
 
@@ -1246,7 +1299,7 @@ export default function App() {
 
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
-      setSelection(null);
+      clearSelectionImmediate();
       commitCurrentFrame(range.startFrame);
     } catch (error) {
       console.error('Delete failed:', error);
@@ -1327,13 +1380,14 @@ export default function App() {
         }
       }
 
-      setSelection(null);
+      clearSelectionImmediate();
     } catch (error) {
       console.error('Paste insert failed:', error);
       alert('貼り付け（挿入）に失敗しました。');
     }
   }, [
     clipboardClip,
+    clearSelectionImmediate,
     createEmptyFrames,
     editTarget,
     getFrameCountFromBuffer,
@@ -1420,13 +1474,14 @@ export default function App() {
         }
       }
 
-      setSelection(null);
+      clearSelectionImmediate();
     } catch (error) {
       console.error('Paste overwrite failed:', error);
       alert('貼り付け（上書き）に失敗しました。');
     }
   }, [
     clipboardClip,
+    clearSelectionImmediate,
     createEmptyFrames,
     editTarget,
     getFrameCountFromBuffer,
@@ -1508,7 +1563,7 @@ export default function App() {
 
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
-      setSelection(null);
+      clearSelectionImmediate();
       const nextMaxFrames = Math.max(0, ...nextTracks.map((track) => track.frames.length));
       commitCurrentFrame(Math.min(currentFrameRef.current, Math.max(0, nextMaxFrames - 1)));
     } catch (error) {
@@ -1668,12 +1723,7 @@ export default function App() {
     }
   };
 
-  const handleSelectionChange = (range: SelectionRange | null) => {
-    setSelection(range);
-    setSelectionMenu(null);
-  };
-
-  const handleSelectionScrub = useCallback(
+  const playSelectionScrub = useCallback(
     (frame: number, trackId: string) => {
       if (editTarget === 'all') return;
       if (
@@ -1688,12 +1738,93 @@ export default function App() {
     [editTarget, playScrubPreview, recordingState]
   );
 
-  const handleOpenSelectionMenu = useCallback((point: { x: number; y: number }) => {
-    setSelectionMenu(point);
-  }, []);
+  const flushSelectionUpdates = useCallback(
+    (forceRange?: SelectionRange | null) => {
+      if (selectionRafRef.current !== null) {
+        cancelAnimationFrame(selectionRafRef.current);
+        selectionRafRef.current = null;
+      }
+
+      const rangeToCommit = forceRange !== undefined ? forceRange : selectionPendingRef.current;
+      if (rangeToCommit !== undefined) {
+        selectionPendingRef.current = null;
+        commitSelectionState(rangeToCommit);
+      }
+
+      const scrubPending = selectionScrubPendingRef.current;
+      if (scrubPending) {
+        const last = selectionScrubLastRef.current;
+        if (!last || last.frame !== scrubPending.frame || last.trackId !== scrubPending.trackId) {
+          selectionScrubLastRef.current = scrubPending;
+          playSelectionScrub(scrubPending.frame, scrubPending.trackId);
+        }
+        selectionScrubPendingRef.current = null;
+      }
+    },
+    [commitSelectionState, playSelectionScrub]
+  );
+
+  const scheduleSelectionUpdate = useCallback(
+    (range: SelectionRange | null) => {
+      if (areSelectionRangesEqual(selectionRef.current, range)) {
+        setSelectionMenu(null);
+        return;
+      }
+      selectionRef.current = range;
+      selectionPendingRef.current = range;
+      setSelectionMenu(null);
+      if (selectionRafRef.current === null) {
+        selectionRafRef.current = requestAnimationFrame(() => {
+          selectionRafRef.current = null;
+          flushSelectionUpdates();
+        });
+      }
+    },
+    [flushSelectionUpdates]
+  );
+
+  const scheduleSelectionScrub = useCallback(
+    (frame: number, trackId: string) => {
+      selectionScrubPendingRef.current = { frame, trackId };
+      if (selectionRafRef.current === null) {
+        selectionRafRef.current = requestAnimationFrame(() => {
+          selectionRafRef.current = null;
+          flushSelectionUpdates();
+        });
+      }
+    },
+    [flushSelectionUpdates]
+  );
+
+  const handleSelectionChange = useCallback(
+    (range: SelectionRange | null) => {
+      scheduleSelectionUpdate(range);
+    },
+    [scheduleSelectionUpdate]
+  );
+
+  const handleSelectionScrub = useCallback(
+    (frame: number, trackId: string) => {
+      scheduleSelectionScrub(frame, trackId);
+    },
+    [scheduleSelectionScrub]
+  );
+
+  const handleSelectionCommit = useCallback(() => {
+    flushSelectionUpdates();
+  }, [flushSelectionUpdates]);
+
+  const handleOpenSelectionMenu = useCallback(
+    (point: { x: number; y: number }) => {
+      flushSelectionUpdates();
+      setSelectionMenu(point);
+    },
+    [flushSelectionUpdates]
+  );
 
   const applySpeechOverrideToSelection = useCallback(
     (value: number) => {
+      flushSelectionUpdates();
       const range = getNormalizedSelection();
       if (!range) return;
       saveToHistory();
@@ -1710,7 +1841,7 @@ export default function App() {
         })
       );
     },
-    [editTarget, getNormalizedSelection, saveToHistory, tracks]
+    [editTarget, flushSelectionUpdates, getNormalizedSelection, saveToHistory, tracks]
   );
 
   const applySpeechOverrideToFrame = useCallback(
@@ -1979,6 +2110,7 @@ export default function App() {
         onOpenSelectionMenu={handleOpenSelectionMenu}
         onSelectionChange={handleSelectionChange}
         onSelectionScrub={handleSelectionScrub}
+        onSelectionCommit={handleSelectionCommit}
         onTrackSelect={handleTrackSelect}
         onScrubStart={handleScrubStart}
         onScrubMove={handleScrubMove}
@@ -2017,8 +2149,7 @@ export default function App() {
         onMarkNonSpeech={handleMarkNonSpeech}
         onResetSpeechLabel={handleResetSpeechLabel}
         onClearSelection={() => {
-          setSelection(null);
-          setSelectionMenu(null);
+          clearSelectionImmediate();
         }}
       />
 
