@@ -15,6 +15,26 @@ export type VadTuning = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const START_PREROLL_FRAMES = 1;
+const START_PREROLL_VOLUME_RATIO = 0.35;
+
+const applySpeechPreroll = (frames: FrameData[], tuning: VadTuning): void => {
+  if (frames.length < 2 || START_PREROLL_FRAMES <= 0) return;
+  // 口パク優先で開始を前倒し（前フレームに微小な音量があればセリフ扱い）
+  const volumeThreshold = (tuning.startThreshold ?? 0) * START_PREROLL_VOLUME_RATIO;
+  for (let i = 1; i < frames.length; i++) {
+    if (!frames[i - 1].isSpeech && frames[i].isSpeech) {
+      for (let j = 1; j <= START_PREROLL_FRAMES; j += 1) {
+        const index = i - j;
+        if (index < 0) break;
+        const target = frames[index];
+        if (!target.isSpeech && target.volume >= volumeThreshold) {
+          target.isSpeech = true;
+        }
+      }
+    }
+  }
+};
 
 export const getVadTuning = (preset: VadPreset, stability01: number, thresholdScale = 1): VadTuning => {
   const stability = clamp(stability01, 0, 1);
@@ -124,5 +144,6 @@ export const analyzeAudioBufferWithVad = (
     });
   }
 
+  applySpeechPreroll(frames, tuning);
   return frames;
 };

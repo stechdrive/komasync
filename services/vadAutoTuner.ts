@@ -18,6 +18,8 @@ type TrackStats = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const DEFAULT_THRESHOLD_SCALE = 0.95;
+const DEFAULT_STABILITY = 0.2;
 
 const quantile = (values: number[], q: number): number => {
   if (values.length === 0) return 0;
@@ -111,7 +113,7 @@ export const computeVadAutoTuning = (
   const totalFrames = statsList.reduce((sum, stats) => sum + stats.totalFrames, 0);
 
   if (totalFrames < minFrames) {
-    return { thresholdScale: 1, stability: 0.4 };
+    return { thresholdScale: DEFAULT_THRESHOLD_SCALE, stability: DEFAULT_STABILITY };
   }
 
   const totalSpeechFrames = statsList.reduce((sum, stats) => sum + stats.speechFrames, 0);
@@ -132,8 +134,8 @@ export const computeVadAutoTuning = (
   const avgGapRun =
     totalGapRuns > 0 ? statsList.reduce((sum, stats) => sum + stats.avgGapRun * stats.gapRuns, 0) / totalGapRuns : 0;
 
-  let thresholdScale = 1;
-  let stability = 0.4;
+  let thresholdScale = DEFAULT_THRESHOLD_SCALE;
+  let stability = DEFAULT_STABILITY;
 
   // 誤検出が多そうなら感度を下げ、保持を弱める。
   if (lowVolumeSpeechRatio > 0.3) {
