@@ -241,6 +241,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     };
   }, [updateRectRef]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || columnWidth <= 0) return;
+    const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
+    const nextLeft = Math.min(scrollLeftRef.current, maxScrollLeft);
+    if (nextLeft !== scrollLeftRef.current) {
+      scrollLeftRef.current = nextLeft;
+      el.scrollLeft = nextLeft;
+      setScrollLeft(nextLeft);
+    }
+  }, [columnWidth, totalColumns]);
+
   const baseColumnWidth = useMemo(() => {
     if (viewportWidth <= 0) return 1;
     return Math.max(1, viewportWidth / 2);
@@ -1518,6 +1530,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     cancelPointerInteraction();
   };
 
+  const handlePointerLeave = (e: React.PointerEvent) => {
+    const scrollEl = scrollRef.current;
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) return;
+    handlePointerCancel(e);
+  };
+
   return (
     <div className="relative h-full w-full bg-gray-100 select-none">
       <div
@@ -1529,7 +1547,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerCancel}
+        onPointerLeave={handlePointerLeave}
         style={{ touchAction: touchActionValue }}
       >
         <div className="flex" style={{ width: `${totalColumns * columnWidth}px`, height: `${columnHeight}px` }}>

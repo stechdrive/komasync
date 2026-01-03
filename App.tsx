@@ -189,7 +189,7 @@ export default function App() {
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
   const selectionRef = useRef<SelectionRange | null>(null);
   const selectionStateRef = useRef<SelectionRange | null>(null);
-  const selectionPendingRef = useRef<SelectionRange | null>(null);
+  const selectionPendingRef = useRef<SelectionRange | null | undefined>(undefined);
   const selectionScrubPendingRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionScrubLastRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionRafRef = useRef<number | null>(null);
@@ -310,7 +310,7 @@ export default function App() {
       cancelAnimationFrame(selectionRafRef.current);
       selectionRafRef.current = null;
     }
-    selectionPendingRef.current = null;
+    selectionPendingRef.current = undefined;
     selectionScrubPendingRef.current = null;
     selectionScrubLastRef.current = null;
     commitSelectionState(null);
@@ -1065,6 +1065,9 @@ export default function App() {
       alert("お使いのブラウザは録音機能をサポートしていません。");
       return;
     }
+    if (recordingState === RecordingState.PLAYING) {
+      handlePause();
+    }
 
     try {
       pendingRecordStartRef.current = true;
@@ -1092,6 +1095,7 @@ export default function App() {
 
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && recordingState === RecordingState.RECORDING) {
+      stopPlaybackLoop();
       stopVuMeter();
       mediaRecorderRef.current.stop();
       // State change to PROCESSING happens in onstop
@@ -1597,6 +1601,7 @@ export default function App() {
     const stream = micStreamRef.current;
     pendingRecordStartRef.current = false;
     micPreparePromiseRef.current = null;
+    autoMicWarmupRef.current = false;
     setIsMicPreparing(false);
     setIsMicReady(false);
     if (!stream) return;
@@ -1745,10 +1750,11 @@ export default function App() {
         selectionRafRef.current = null;
       }
 
-      const rangeToCommit = forceRange !== undefined ? forceRange : selectionPendingRef.current;
-      if (rangeToCommit !== undefined) {
-        selectionPendingRef.current = null;
-        commitSelectionState(rangeToCommit);
+      const hasForcedRange = forceRange !== undefined;
+      const pendingRange = hasForcedRange ? forceRange : selectionPendingRef.current;
+      if (hasForcedRange || selectionPendingRef.current !== undefined) {
+        selectionPendingRef.current = undefined;
+        commitSelectionState(pendingRange ?? null);
       }
 
       const scrubPending = selectionScrubPendingRef.current;
