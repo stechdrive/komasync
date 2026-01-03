@@ -953,7 +953,7 @@ export default function App() {
       // If we are RECORDING, do NOT stop when audio ends (continue until user stops).
       if (mode === RecordingState.PLAYING && currentTime >= expectedEndTime) {
         stopPlaybackLoop();
-        const endFrame = Math.max(0, Math.min(maxFrames - 1, Math.floor(maxDuration * FPS) - 1));
+        const endFrame = Math.max(0, maxFrames - 1);
         lastFrameRef.current = endFrame;
         commitCurrentFrame(endFrame);
         setRecordingState(RecordingState.IDLE);
