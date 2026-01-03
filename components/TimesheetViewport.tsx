@@ -1496,6 +1496,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (isScrubbingRef.current) {
+      if (e.pointerType === 'mouse') {
+        suppressBackdropClickRef.current = true;
+      }
       onScrubEnd?.();
       isScrubbingRef.current = false;
       scrubPendingRef.current = null;
@@ -1515,6 +1518,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (scrubPendingRef.current && !pending) {
+      if (e.pointerType === 'mouse') {
+        suppressBackdropClickRef.current = true;
+      }
       onFrameTap(scrubPendingRef.current.frame);
       scrubPendingRef.current = null;
       return;
@@ -1542,6 +1548,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       onSelectionChange?.(range);
     }
 
+    if (pending.pointerType === 'mouse') {
+      suppressBackdropClickRef.current = true;
+    }
     onFrameTap(pending.frame);
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     pendingTapRef.current = null;
