@@ -20,7 +20,7 @@
 ## 進捗チェックリスト（全体）
 - [x] P1-1 `currentFrame` 更新の間引き + ref 同期
 - [x] P1-2 `inputRms` 更新の局所化
-- [ ] P1-3 `TimesheetColumn` の派生プロップ化 + memo
+- [x] P1-3 `TimesheetColumn` の派生プロップ化 + memo
 - [ ] P2-1 スクロール `setScrollLeft` rAF 間引き
 - [ ] P2-2 `elementFromPoint` を座標計算へ置換（フォールバック含む）
 - [ ] P2-3 選択ドラッグの rAF 集約（viewport + App）

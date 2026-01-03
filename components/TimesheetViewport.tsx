@@ -28,6 +28,9 @@ type TimesheetViewportProps = {
   onZoomChange?: (zoom: number) => void;
 };
 
+type TrackRenderData = Pick<Track, 'id' | 'frames' | 'speechOverrides'>;
+type TrackDataKey = Pick<Track, 'frames' | 'speechOverrides'>;
+
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const LONG_PRESS_MENU_MS = 700;
 const EDGE_SCROLL_SIZE = 32;
@@ -196,21 +199,58 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
 
-  const trackVolumeMax = useMemo(() => {
-    const maxMap = new Map<string, number>();
-    tracks.forEach((track) => {
-      let max = 0;
-      track.frames.forEach((frame) => {
-        if (frame.volume > max) max = frame.volume;
-      });
-      maxMap.set(track.id, max);
-    });
-    return maxMap;
-  }, [tracks]);
+  const trackRenderData = useMemo<TrackRenderData[]>(
+    () =>
+      tracks.map((track) => ({
+        id: track.id,
+        frames: track.frames,
+        speechOverrides: track.speechOverrides,
+      })),
+    [tracks]
+  );
+
+  const trackDataKeys = useMemo<TrackDataKey[]>(
+    () =>
+      trackRenderData.map((track) => ({
+        frames: track.frames,
+        speechOverrides: track.speechOverrides,
+      })),
+    [trackRenderData]
+  );
+
+  const trackOrderKey = useMemo(() => trackRenderData.map((track) => track.id).join('|'), [trackRenderData]);
+
+  const trackMaxVolumes = useMemo(
+    () =>
+      trackRenderData.map((track) => {
+        let max = 0;
+        track.frames.forEach((frame) => {
+          if (frame.volume > max) max = frame.volume;
+        });
+        return max;
+      }),
+    [trackRenderData]
+  );
+
+  const activeTrackId = useMemo(() => (editTarget === 'all' ? null : editTarget), [editTarget]);
 
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
+
+  const layoutKey = useMemo(
+    () =>
+      [
+        columnWidth,
+        columnHeight,
+        rowHeight,
+        rulerWidth,
+        tracks.length,
+        touchActionValue,
+        fps,
+      ].join('|'),
+    [columnHeight, columnWidth, fps, rowHeight, rulerWidth, touchActionValue, tracks.length]
+  );
 
   const scrollMetricsRef = useRef({
     columnWidth,
@@ -374,6 +414,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const leftSpacerWidth = renderStartColumn * columnWidth;
   const rightSpacerWidth = Math.max(0, totalColumns - renderEndColumn - 1) * columnWidth;
+  const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
+  const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onBackgroundClick?.();
@@ -1110,25 +1152,62 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             <div className="shrink-0" style={{ width: `${leftSpacerWidth}px`, height: `${columnHeight}px` }} />
           )}
 
-          {visibleColumnIndices.map((columnIndex) => (
-            <TimesheetColumn
-              key={columnIndex}
-              columnIndex={columnIndex}
-              startFrame={columnIndex * framesPerColumn}
-              fps={fps}
-              tracks={tracks}
-              editTarget={editTarget}
-              cursorFrame={currentFrame}
-              selection={selection}
-              maxFrames={maxFrames}
-              columnWidth={columnWidth}
-              columnHeight={columnHeight}
-              rulerWidth={rulerWidth}
-              rowHeight={rowHeight}
-              trackVolumeMax={trackVolumeMax}
-              touchAction={touchActionValue}
-            />
-          ))}
+          {visibleColumnIndices.map((columnIndex) => {
+            const startFrame = columnIndex * framesPerColumn;
+            const columnEnd = startFrame + framesPerColumn - 1;
+            const cursorRow =
+              currentFrame >= startFrame && currentFrame <= columnEnd
+                ? Math.floor(currentFrame - startFrame)
+                : -1;
+
+            let selectionSlice: { startRow: number; endRow: number } | null = null;
+            if (
+              selectionStart !== null &&
+              selectionEnd !== null &&
+              selectionEnd >= startFrame &&
+              selectionStart <= columnEnd
+            ) {
+              const startRow = Math.max(0, Math.floor(selectionStart - startFrame));
+              const endRow = Math.min(framesPerColumn - 1, Math.floor(selectionEnd - startFrame));
+              selectionSlice = { startRow, endRow };
+            }
+
+            let pastEndStartRow: number | null = null;
+            if (maxFrames <= startFrame) {
+              pastEndStartRow = 0;
+            } else if (maxFrames <= columnEnd) {
+              pastEndStartRow = maxFrames - startFrame;
+            }
+
+            let endBoundaryRow: number | null = null;
+            if (maxFrames >= startFrame && maxFrames <= columnEnd) {
+              endBoundaryRow = maxFrames - startFrame;
+            }
+
+            return (
+              <TimesheetColumn
+                key={columnIndex}
+                columnIndex={columnIndex}
+                startFrame={startFrame}
+                fps={fps}
+                tracks={trackRenderData}
+                cursorRow={cursorRow}
+                selectionSlice={selectionSlice}
+                endBoundaryRow={endBoundaryRow}
+                pastEndStartRow={pastEndStartRow}
+                columnWidth={columnWidth}
+                columnHeight={columnHeight}
+                rulerWidth={rulerWidth}
+                rowHeight={rowHeight}
+                trackMaxVolumes={trackMaxVolumes}
+                trackDataKeys={trackDataKeys}
+                trackOrderKey={trackOrderKey}
+                activeTrackId={activeTrackId}
+                layoutKey={layoutKey}
+                touchAction={touchActionValue}
+              />
+            );
+          })}
 
           {rightSpacerWidth > 0 && (
             <div className="shrink-0" style={{ width: `${rightSpacerWidth}px`, height: `${columnHeight}px` }} />

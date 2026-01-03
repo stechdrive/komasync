@@ -1,25 +1,44 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Track } from '@/types';
+import type { FrameData } from '@/types';
 import { getFramesPerColumn, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { formatTimecodeOneBased } from '@/domain/timecode';
 import { getTrackTheme } from '@/domain/trackTheme';
-import { EditTarget, SelectionRange } from '@/domain/editTypes';
 import { getEffectiveSpeech } from '@/services/speechLabels';
+
+type TrackRenderData = {
+  id: string;
+  frames: FrameData[];
+  speechOverrides: number[];
+};
+
+type TrackDataKey = {
+  frames: FrameData[];
+  speechOverrides: number[];
+};
+
+type SelectionSlice = {
+  startRow: number;
+  endRow: number;
+};
 
 type TimesheetColumnProps = {
   columnIndex: number;
   startFrame: number;
   fps: number;
-  tracks: Track[];
-  editTarget: EditTarget;
-  cursorFrame: number;
-  selection: SelectionRange | null;
-  maxFrames: number;
+  tracks: TrackRenderData[];
+  cursorRow: number;
+  selectionSlice: SelectionSlice | null;
+  endBoundaryRow: number | null;
+  pastEndStartRow: number | null;
   columnWidth: number;
   columnHeight: number;
   rulerWidth: number;
   rowHeight: number;
-  trackVolumeMax: Map<string, number>;
+  trackMaxVolumes: number[];
+  trackDataKeys: TrackDataKey[];
+  trackOrderKey: string;
+  activeTrackId: string | null;
+  layoutKey: string;
   touchAction: React.CSSProperties['touchAction'];
 };
 
@@ -58,29 +77,27 @@ const toRgba = (hex: string, alpha: number): string => {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 };
 
-export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
+const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   columnIndex,
   startFrame,
   fps,
   tracks,
-  editTarget,
-  cursorFrame,
-  selection,
-  maxFrames,
+  cursorRow,
+  selectionSlice,
+  endBoundaryRow,
+  pastEndStartRow,
   columnWidth,
   columnHeight,
   rulerWidth,
   rowHeight,
-  trackVolumeMax,
+  trackMaxVolumes,
+  activeTrackId,
   touchAction,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
-  const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
-  const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
   const labelStep = rowHeight >= 11 ? 1 : rowHeight >= 9 ? 6 : rowHeight >= 7 ? 12 : 0;
   const rulerFontSize = clamp(rowHeight * 0.6, 8, 12);
   const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
-  const activeTrackId = editTarget === 'all' ? null : editTarget;
   const waveCanvasRefs = useRef<Map<string, HTMLCanvasElement | null>>(new Map());
   const trackColumnWidth = useMemo(() => {
     const count = Math.max(1, tracks.length);
@@ -126,36 +143,20 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
   }, [columnIndex]);
 
   const selectionOverlay = useMemo(() => {
-    if (selectionStart === null || selectionEnd === null) return null;
+    if (!selectionSlice) return null;
     if (rowHeight <= 0) return null;
 
-    const columnStart = startFrame;
-    const columnEnd = startFrame + framesPerColumn - 1;
-    const rangeStart = Math.max(selectionStart, columnStart);
-    const rangeEnd = Math.min(selectionEnd, columnEnd);
-    if (rangeStart > rangeEnd) return null;
-
-    const isAllTracks = editTarget === 'all';
-    const targetIndex = isAllTracks ? 0 : tracks.findIndex((track) => track.id === editTarget);
+    const isAllTracks = activeTrackId === null;
+    const targetIndex = isAllTracks ? 0 : tracks.findIndex((track) => track.id === activeTrackId);
     if (!isAllTracks && targetIndex < 0) return null;
 
     const left = rulerWidth + (isAllTracks ? 0 : targetIndex * trackColumnWidth);
     const width = isAllTracks ? trackColumnWidth * tracks.length : trackColumnWidth;
-    const top = (rangeStart - columnStart) * rowHeight;
-    const height = (rangeEnd - rangeStart + 1) * rowHeight;
+    const top = selectionSlice.startRow * rowHeight;
+    const height = (selectionSlice.endRow - selectionSlice.startRow + 1) * rowHeight;
 
     return { left, width, top, height };
-  }, [
-    editTarget,
-    framesPerColumn,
-    rowHeight,
-    rulerWidth,
-    selectionEnd,
-    selectionStart,
-    startFrame,
-    trackColumnWidth,
-    tracks,
-  ]);
+  }, [activeTrackId, rowHeight, rulerWidth, selectionSlice, trackColumnWidth, tracks]);
 
   const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
   const vadBorderWidth = clamp(Math.round(rowHeight * 0.08), 1, 2);
@@ -167,7 +168,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     const barHeight = Math.max(1, rowHeight);
     const outlinePadding = Math.min(0.7, rowHeight * 0.08);
 
-    tracks.forEach((track) => {
+    tracks.forEach((track, trackIndex) => {
       const canvas = waveCanvasRefs.current.get(track.id);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -187,7 +188,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
       ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-      const volumeMax = trackVolumeMax.get(track.id) ?? 0;
+      const volumeMax = trackMaxVolumes[trackIndex] ?? 0;
       const volumeDenom = volumeMax > 0 ? volumeMax : 1;
       const centerX = cssWidth / 2;
       const maxHalfWidth = Math.max(1, centerX - maxHalfPadding);
@@ -218,7 +219,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
         ctx.fillRect(centerX - 0.5, y, 1, barHeight);
       }
     });
-  }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, trackVolumeMax, tracks]);
+  }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, trackMaxVolumes, tracks]);
 
   return (
     <div
@@ -258,14 +259,13 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
             (labelStep > 1 && frameNumInColumn % labelStep === 0);
           const localFrameNumber = columnOffset + frameNumInColumn;
 
-          const isPastEnd = globalFrameIndex >= maxFrames;
-          const isEndBoundary = globalFrameIndex === maxFrames;
-          const isCurrent = globalFrameIndex === cursorFrame;
+          const isPastEnd = pastEndStartRow !== null ? rowIndex >= pastEndStartRow : false;
+          const isEndBoundary = endBoundaryRow !== null && rowIndex === endBoundaryRow;
+          const isCurrent = rowIndex === cursorRow;
 
-          const isInSelection =
-            selectionStart !== null && selectionEnd !== null
-              ? globalFrameIndex >= selectionStart && globalFrameIndex <= selectionEnd
-              : false;
+          const isInSelection = selectionSlice
+            ? rowIndex >= selectionSlice.startRow && rowIndex <= selectionSlice.endRow
+            : false;
 
           const rulerBorder = getRowBorderClass(rowIndex, fps, true);
           const rulerTone = isCurrent ? 'bg-yellow-200 text-gray-900 font-bold' : 'bg-gray-50 text-gray-600';
@@ -285,7 +285,7 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
               {/* トラック */}
               {tracks.map((track) => {
                 const isSpeech = speechData.rowsByTrack.get(track.id)?.[rowIndex] ?? false;
-                const isTargetTrack = editTarget === 'all' || editTarget === track.id;
+                const isTargetTrack = activeTrackId === null || activeTrackId === track.id;
                 const isActiveTrack = activeTrackId === track.id;
                 const theme = getTrackTheme(track.id);
                 const isSelectionActive = isInSelection && isTargetTrack;
@@ -399,3 +399,46 @@ export const TimesheetColumn: React.FC<TimesheetColumnProps> = ({
     </div>
   );
 };
+
+const areSelectionSlicesEqual = (a: SelectionSlice | null, b: SelectionSlice | null): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.startRow === b.startRow && a.endRow === b.endRow;
+};
+
+const areTrackDataKeysEqual = (a: TrackDataKey[], b: TrackDataKey[]): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.frames !== b[i]?.frames) return false;
+    if (a[i]?.speechOverrides !== b[i]?.speechOverrides) return false;
+  }
+  return true;
+};
+
+const areNumberArraysEqual = (a: number[], b: number[]): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
+const areTimesheetColumnPropsEqual = (prev: TimesheetColumnProps, next: TimesheetColumnProps): boolean => {
+  if (prev.columnIndex !== next.columnIndex) return false;
+  if (prev.startFrame !== next.startFrame) return false;
+  if (prev.cursorRow !== next.cursorRow) return false;
+  if (prev.endBoundaryRow !== next.endBoundaryRow) return false;
+  if (prev.pastEndStartRow !== next.pastEndStartRow) return false;
+  if (prev.layoutKey !== next.layoutKey) return false;
+  if (prev.trackOrderKey !== next.trackOrderKey) return false;
+  if (prev.activeTrackId !== next.activeTrackId) return false;
+  if (!areSelectionSlicesEqual(prev.selectionSlice, next.selectionSlice)) return false;
+  if (!areTrackDataKeysEqual(prev.trackDataKeys, next.trackDataKeys)) return false;
+  if (!areNumberArraysEqual(prev.trackMaxVolumes, next.trackMaxVolumes)) return false;
+  return true;
+};
+
+export const TimesheetColumn = React.memo(TimesheetColumnComponent, areTimesheetColumnPropsEqual);
+TimesheetColumn.displayName = 'TimesheetColumn';
