@@ -23,7 +23,8 @@ const PROB_MIN = 0.05;
 const PROB_MAX = 0.95;
 const NOISE_FLOOR_QUANTILE = 0.2;
 const NOISE_FLOOR_MULTIPLIER = 2.0;
-// Silero出力が極端に低いときはRMS判定にフォールバックする。
+// Silero出力が極端に低いときの自動フォールバックを無効化する。
+const ENABLE_LOW_PROB_FALLBACK = false;
 const SILERO_MIN_PROB_MAX = 0.12;
 const START_PREROLL_FRAMES = 3;
 const START_PREROLL_VOLUME_RATIO = 0.2;
@@ -347,6 +348,7 @@ const analyze = async (request: VadWorkerRequest): Promise<{ frames: FrameData[]
   }
 
   const forceFallbackRms =
+    ENABLE_LOW_PROB_FALLBACK &&
     probabilities.length > 0 &&
     probMax !== Number.NEGATIVE_INFINITY &&
     !Number.isNaN(probMax) &&
