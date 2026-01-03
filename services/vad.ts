@@ -15,8 +15,8 @@ export type VadTuning = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
-const START_PREROLL_FRAMES = 1;
-const START_PREROLL_VOLUME_RATIO = 0.25;
+const START_PREROLL_FRAMES = 2;
+const START_PREROLL_VOLUME_RATIO = 0.3;
 
 const applySpeechPreroll = (frames: FrameData[], tuning: VadTuning): void => {
   if (frames.length < 2 || START_PREROLL_FRAMES <= 0) return;
