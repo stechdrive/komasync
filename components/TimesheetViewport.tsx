@@ -291,17 +291,29 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const trackOrderKey = useMemo(() => trackRenderData.map((track) => track.id).join('|'), [trackRenderData]);
 
-  const trackMaxVolumes = useMemo(
-    () =>
-      trackRenderData.map((track) => {
-        let max = 0;
-        track.frames.forEach((frame) => {
-          if (frame.volume > max) max = frame.volume;
-        });
-        return max;
-      }),
-    [trackRenderData]
-  );
+  const trackMaxVolumeCacheRef = useRef<Map<string, { framesRef: Track['frames']; max: number }>>(new Map());
+  const trackMaxVolumes = useMemo(() => {
+    const cache = trackMaxVolumeCacheRef.current;
+    const next = trackRenderData.map((track) => {
+      const cached = cache.get(track.id);
+      if (cached && cached.framesRef === track.frames) {
+        return cached.max;
+      }
+      let max = 0;
+      track.frames.forEach((frame) => {
+        if (frame.volume > max) max = frame.volume;
+      });
+      cache.set(track.id, { framesRef: track.frames, max });
+      return max;
+    });
+
+    const activeIds = new Set(trackRenderData.map((track) => track.id));
+    Array.from(cache.keys()).forEach((key) => {
+      if (!activeIds.has(key)) cache.delete(key);
+    });
+
+    return next;
+  }, [trackRenderData]);
 
   const activeTrackId = useMemo(() => (editTarget === 'all' ? null : editTarget), [editTarget]);
 
