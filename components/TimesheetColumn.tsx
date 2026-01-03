@@ -136,10 +136,15 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
     return { rowsByTrack, rangesByTrack };
   }, [framesPerColumn, startFrame, tracks]);
 
-  const columnBoundaryClass = useMemo(() => {
-    if (columnIndex === 0) return 'border-l-0';
-    if (columnIndex % COLUMNS_PER_SHEET === 0) return 'border-l-4 border-gray-600';
-    return 'border-l border-gray-300';
+  const columnBoundary = useMemo(() => {
+    if (columnIndex === 0) return { className: 'border-l-0', style: undefined };
+    if (columnIndex % COLUMNS_PER_SHEET === 0) {
+      return {
+        className: 'border-l border-gray-300',
+        style: { boxShadow: 'inset 4px 0 0 rgba(75, 85, 99, 1)' },
+      };
+    }
+    return { className: 'border-l border-gray-300', style: undefined };
   }, [columnIndex]);
 
   const selectionOverlay = useMemo(() => {
@@ -223,8 +228,12 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
   return (
     <div
-      className={`relative shrink-0 snap-start ${columnBoundaryClass}`}
-      style={{ width: `${columnWidth}px`, height: `${columnHeight}px` }}
+      className={`relative shrink-0 snap-start ${columnBoundary.className}`}
+      style={{
+        width: `${columnWidth}px`,
+        height: `${columnHeight}px`,
+        ...(columnBoundary.style ?? {}),
+      }}
     >
       <div className="absolute inset-0 pointer-events-none z-10">
         {tracks.map((track, index) => (
