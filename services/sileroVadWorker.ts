@@ -23,7 +23,7 @@ const PROB_MAX = 0.95;
 const NOISE_FLOOR_QUANTILE = 0.2;
 const NOISE_FLOOR_MULTIPLIER = 2.0;
 const START_PREROLL_FRAMES = 3;
-const START_PREROLL_VOLUME_RATIO = 0.25;
+const START_PREROLL_VOLUME_RATIO = 0.2;
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
