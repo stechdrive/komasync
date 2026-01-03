@@ -106,6 +106,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
   const selectionRangeRef = useRef<SelectionRange | null>(selection);
+  const suppressBackdropClickRef = useRef(false);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const panPointerIdRef = useRef<number | null>(null);
@@ -542,6 +543,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
+    if (suppressBackdropClickRef.current) {
+      suppressBackdropClickRef.current = false;
+      return;
+    }
     if (e.target === e.currentTarget) onBackgroundClick?.();
   };
 
@@ -1072,7 +1077,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
-    if (wasSelecting) onSelectionCommit?.();
+    if (wasSelecting) {
+      suppressBackdropClickRef.current = true;
+      onSelectionCommit?.();
+    }
   };
 
   const stopPinch = () => {
@@ -1498,6 +1506,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
+      suppressBackdropClickRef.current = true;
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       stopAutoScroll();
