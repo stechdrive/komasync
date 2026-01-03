@@ -173,7 +173,6 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
   const [isMicPreparing, setIsMicPreparing] = useState(false);
-  const [inputRms, setInputRms] = useState(0);
   const [viewportFirstColumn, setViewportFirstColumn] = useState(0);
   const [sheetZoom, setSheetZoom] = useState(1);
   const [vadEngineStatus, setVadEngineStatus] = useState<SileroVadStatus>(() => getSileroVadStatus());
@@ -195,6 +194,7 @@ export default function App() {
   const lastSingleTrackIdRef = useRef<string>('1');
   const currentFrameRef = useRef(0);
   const lastFrameRef = useRef(0);
+  const inputRmsRef = useRef(0);
   const autoMicWarmupRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
   const recordingStateRef = useRef(recordingState);
@@ -857,7 +857,7 @@ export default function App() {
     }
     vuSourceRef.current = null;
     vuAnalyserRef.current = null;
-    setInputRms(0);
+    inputRmsRef.current = 0;
   }, []);
 
   const startVuMeter = (stream: MediaStream) => {
@@ -886,7 +886,7 @@ export default function App() {
       let sumSquares = 0;
       for (let i = 0; i < buffer.length; i++) sumSquares += buffer[i] * buffer[i];
       const rms = buffer.length > 0 ? Math.sqrt(sumSquares / buffer.length) : 0;
-      setInputRms((prev) => prev * 0.8 + rms * 0.2);
+      inputRmsRef.current = inputRmsRef.current * 0.8 + rms * 0.2;
       vuAnimationFrameRef.current = requestAnimationFrame(tick);
     };
 
@@ -2032,7 +2032,7 @@ export default function App() {
         isVadAuto={isVadAuto}
         vadEngineStatus={vadEngineStatus}
         vadEngineError={vadEngineError}
-        inputRms={inputRms}
+        inputRmsRef={inputRmsRef}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
         onExportAudio={() => void handleExportAudio()}
