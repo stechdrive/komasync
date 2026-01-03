@@ -105,6 +105,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const scrollLeftRef = useRef(0);
+  const scrollLeftRafRef = useRef<number | null>(null);
+  const scrollLeftFlushTimerRef = useRef<number | null>(null);
   const [wrapCue, setWrapCue] = useState<'up' | 'down' | null>(null);
   const wrapCueRef = useRef<'up' | 'down' | null>(null);
   const autoScrollRef = useRef<{
@@ -170,12 +173,40 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const el = scrollRef.current;
     if (!el) return;
 
+    scrollLeftRef.current = el.scrollLeft;
+    setScrollLeft(el.scrollLeft);
+
+    const flushScrollLeft = () => {
+      scrollLeftRafRef.current = null;
+      setScrollLeft(scrollLeftRef.current);
+    };
+
     const onScroll = () => {
-      setScrollLeft(el.scrollLeft);
+      scrollLeftRef.current = el.scrollLeft;
+      if (scrollLeftRafRef.current === null) {
+        scrollLeftRafRef.current = window.requestAnimationFrame(flushScrollLeft);
+      }
+      if (scrollLeftFlushTimerRef.current !== null) {
+        window.clearTimeout(scrollLeftFlushTimerRef.current);
+      }
+      scrollLeftFlushTimerRef.current = window.setTimeout(() => {
+        scrollLeftFlushTimerRef.current = null;
+        setScrollLeft(scrollLeftRef.current);
+      }, 0);
     };
 
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (scrollLeftRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollLeftRafRef.current);
+        scrollLeftRafRef.current = null;
+      }
+      if (scrollLeftFlushTimerRef.current !== null) {
+        window.clearTimeout(scrollLeftFlushTimerRef.current);
+        scrollLeftFlushTimerRef.current = null;
+      }
+    };
   }, []);
 
   const baseColumnWidth = useMemo(() => {
@@ -312,7 +343,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       }
 
       if (nextLeft !== el.scrollLeft || nextTop !== el.scrollTop) {
-        el.scrollTo({ left: nextLeft, top: nextTop, behavior: options?.behavior ?? 'smooth' });
+        const behavior = options?.behavior ?? 'smooth';
+        el.scrollTo({ left: nextLeft, top: nextTop, behavior });
+        if (behavior === 'auto') {
+          scrollLeftRef.current = nextLeft;
+        }
       }
     },
     [columnWidth, framesPerColumn, rowHeight]
@@ -348,6 +383,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     zoomAnchorRef.current = null;
     requestAnimationFrame(() => {
       el.scrollTo({ left: nextScrollLeft, top: nextScrollTop });
+      scrollLeftRef.current = nextScrollLeft;
     });
   }, [columnWidth, rowHeight]);
 
@@ -368,6 +404,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
       const behavior: ScrollBehavior = isScrubbing ? 'auto' : 'smooth';
       el.scrollTo({ left: targetLeft, behavior });
+      if (behavior === 'auto') {
+        scrollLeftRef.current = targetLeft;
+      }
       return;
     }
 
@@ -388,7 +427,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
-    const firstVisible = Math.floor(scrollLeft / columnWidth);
+    const firstVisible = Math.floor(scrollLeftRef.current / columnWidth);
     if (lastFirstVisibleColRef.current === firstVisible) return;
     lastFirstVisibleColRef.current = firstVisible;
     onFirstVisibleColumnChange(firstVisible);
@@ -397,8 +436,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const { renderStartColumn, renderEndColumn } = useMemo(() => {
     if (columnWidth <= 0) return { renderStartColumn: 0, renderEndColumn: Math.min(totalColumns - 1, 1) };
 
-    const firstVisible = Math.floor(scrollLeft / columnWidth);
-    const overscan = 2;
+    const firstVisible = Math.floor(scrollLeftRef.current / columnWidth);
+    const overscan = 3;
     const visibleCount = 2;
 
     const start = Math.max(0, firstVisible - overscan);
@@ -564,7 +603,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       nextLeft = clamp(el.scrollLeft + dirX * speedX, 0, maxScrollLeft);
     }
 
-    if (nextLeft !== el.scrollLeft) el.scrollLeft = nextLeft;
+    if (nextLeft !== el.scrollLeft) {
+      el.scrollLeft = nextLeft;
+      scrollLeftRef.current = nextLeft;
+    }
     if (nextTop !== el.scrollTop) el.scrollTop = nextTop;
 
     let cue: 'up' | 'down' | null = null;
@@ -699,6 +741,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const dy = e.clientY - start.y;
     el.scrollLeft = start.scrollLeft - dx;
     el.scrollTop = start.scrollTop - dy;
+    scrollLeftRef.current = el.scrollLeft;
     e.preventDefault();
   };
 
@@ -866,6 +909,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           const dy = pinchInfo.center.y - panStart.centerY;
           el.scrollLeft = panStart.scrollLeft - dx;
           el.scrollTop = panStart.scrollTop - dy;
+          scrollLeftRef.current = el.scrollLeft;
         }
         e.preventDefault();
         return;
