@@ -100,6 +100,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     contentY: number;
   } | null>(null);
   const prevMetricsRef = useRef<{ columnWidth: number; rowHeight: number } | null>(null);
+  const zoomScrollRafRef = useRef<number | null>(null);
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
   const selectionRangeRef = useRef<SelectionRange | null>(selection);
@@ -437,11 +438,24 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const nextScrollTop = anchorContentY * scaleY - (anchorClientY - rect.top);
 
     zoomAnchorRef.current = null;
-    requestAnimationFrame(() => {
+    if (zoomScrollRafRef.current !== null) {
+      cancelAnimationFrame(zoomScrollRafRef.current);
+    }
+    zoomScrollRafRef.current = requestAnimationFrame(() => {
+      zoomScrollRafRef.current = null;
       el.scrollTo({ left: nextScrollLeft, top: nextScrollTop });
       scrollLeftRef.current = nextScrollLeft;
     });
   }, [columnWidth, rowHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (zoomScrollRafRef.current !== null) {
+        cancelAnimationFrame(zoomScrollRafRef.current);
+        zoomScrollRafRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAutoScrollEnabled) {

@@ -226,6 +226,9 @@ export default function App() {
   const sourceNodesRef = useRef<Map<string, { source: AudioBufferSourceNode; gain: GainNode }>>(new Map());
   const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode }[]>([]);
   const scrubLastTimeRef = useRef(0);
+  const scrubFramePendingRef = useRef<number | null>(null);
+  const scrubFrameLastRef = useRef<number | null>(null);
+  const scrubRafRef = useRef<number | null>(null);
   const isScrubbingRef = useRef(false);
   const scrubStateResetRef = useRef<number | null>(null);
   
@@ -260,6 +263,15 @@ export default function App() {
     return () => {
       if (scrubStateResetRef.current !== null) {
         window.clearTimeout(scrubStateResetRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrubRafRef.current !== null) {
+        cancelAnimationFrame(scrubRafRef.current);
+        scrubRafRef.current = null;
       }
     };
   }, []);
@@ -817,6 +829,46 @@ export default function App() {
       scrubNodesRef.current.push({ source, gain });
     });
   }, [stopScrubSources, tracks]);
+
+  const commitScrubFrame = useCallback(
+    (frame: number) => {
+      if (scrubFrameLastRef.current === frame) return;
+      scrubFrameLastRef.current = frame;
+      commitCurrentFrame(frame);
+      playScrubPreview(frame);
+    },
+    [commitCurrentFrame, playScrubPreview]
+  );
+
+  const flushScrubFrame = useCallback(
+    (forceFrame?: number | null) => {
+      if (scrubRafRef.current !== null) {
+        cancelAnimationFrame(scrubRafRef.current);
+        scrubRafRef.current = null;
+      }
+      const frame = forceFrame ?? scrubFramePendingRef.current;
+      scrubFramePendingRef.current = null;
+      if (frame === null || frame === undefined) return;
+      commitScrubFrame(frame);
+    },
+    [commitScrubFrame]
+  );
+
+  const scheduleScrubFrame = useCallback(
+    (frame: number) => {
+      if (scrubFrameLastRef.current === frame) return;
+      scrubFramePendingRef.current = frame;
+      if (scrubRafRef.current !== null) return;
+      scrubRafRef.current = requestAnimationFrame(() => {
+        scrubRafRef.current = null;
+        const pending = scrubFramePendingRef.current;
+        scrubFramePendingRef.current = null;
+        if (pending === null || pending === undefined) return;
+        commitScrubFrame(pending);
+      });
+    },
+    [commitScrubFrame]
+  );
 
   // Helper to start playback (used by both Play button and Recording start)
   const startPlayback = (startFrame: number, mode: RecordingState) => {
@@ -1934,21 +1986,22 @@ export default function App() {
     startScrubState();
     scrubLastTimeRef.current = 0;
     const nextFrame = Math.max(0, Math.floor(frame));
-    commitCurrentFrame(nextFrame);
-    playScrubPreview(nextFrame);
+    scrubFrameLastRef.current = null;
+    flushScrubFrame(null);
+    commitScrubFrame(nextFrame);
   };
 
   const handleScrubMove = (frame: number) => {
     if (!isScrubbingRef.current) return;
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
     const nextFrame = Math.max(0, Math.floor(frame));
-    commitCurrentFrame(nextFrame);
-    playScrubPreview(nextFrame);
+    scheduleScrubFrame(nextFrame);
   };
 
   const handleScrubEnd = () => {
     if (!isScrubbingRef.current) return;
     isScrubbingRef.current = false;
+    flushScrubFrame();
     stopScrubState();
     stopScrubSources();
   };
