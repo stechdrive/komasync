@@ -43,7 +43,7 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   const baseThreshold = (() => {
     switch (preset) {
       case 'quiet':
-        return 0.035;
+        return 0.03;
       case 'noisy':
         return 0.08;
       case 'normal':
@@ -53,9 +53,8 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   })();
 
   const startThreshold = clamp(baseThreshold * (1 - 0.4 * stability) * thresholdGain, 0.005, 0.5);
-  const hysteresisRatio = clamp(0.85 - 0.25 * stability, 0.55, 0.9);
-  const endThreshold = startThreshold * hysteresisRatio;
-  const holdFrames = Math.round(2 + 10 * stability);
+  let hysteresisRatio = clamp(0.85 - 0.25 * stability, 0.55, 0.9);
+  let holdFrames = Math.round(2 + 10 * stability);
   const aggressiveness = (() => {
     switch (preset) {
       case 'quiet':
@@ -69,7 +68,7 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   })();
   const speechRatio = 0.5;
 
-  const probabilityBase = (() => {
+  let probabilityBase = (() => {
     switch (preset) {
       case 'quiet':
         return 0.35;
@@ -80,7 +79,17 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
         return 0.5;
     }
   })();
-  const probabilityHysteresis = clamp(0.8 - 0.2 * stability, 0.5, 0.9);
+  let probabilityHysteresis = clamp(0.8 - 0.2 * stability, 0.5, 0.9);
+
+  if (preset === 'quiet') {
+    // 静かな環境向け: 開始の取りこぼしを減らし、終端の粘りを抑える
+    probabilityBase = clamp(probabilityBase - 0.07, 0.2, 0.6);
+    probabilityHysteresis = clamp(probabilityHysteresis + 0.1, 0.6, 0.95);
+    hysteresisRatio = clamp(hysteresisRatio + 0.05, 0.6, 0.95);
+    holdFrames = Math.max(1, Math.round(holdFrames * 0.7));
+  }
+
+  const endThreshold = startThreshold * hysteresisRatio;
 
   return {
     startThreshold,
