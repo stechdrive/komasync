@@ -132,28 +132,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }>({ rafId: null, pointerX: 0, pointerY: 0, pointerType: 'mouse' });
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onSelectionScrubRef = useRef(onSelectionScrub);
-  const isIOS = useMemo(() => {
-    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
-    const ua = navigator.userAgent;
-    return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
-  }, [updateRectRef]);
-  const isZoomed = zoom > 1;
-  const isAutoScrollEnabled = isAutoScrollActive || isScrubbing;
-  const allowSingleFingerPan = !isIOS && !isZoomed;
-  const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
-
   const updateRectRef = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const rectSnapshot = rectRef.current;
-    if (!rectSnapshot) {
-      updateRectRef();
-    }
-    const rect = rectRef.current;
-    if (!rect) {
-      stopAutoScroll();
-      return;
-    }
+    const rect = el.getBoundingClientRect();
     rectRef.current = {
       left: rect.left,
       top: rect.top,
@@ -165,6 +147,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       clientHeight: el.clientHeight,
     };
   }, []);
+
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in window);
+  }, []);
+  const isZoomed = zoom > 1;
+  const isAutoScrollEnabled = isAutoScrollActive || isScrubbing;
+  const allowSingleFingerPan = !isIOS && !isZoomed;
+  const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
 
   useEffect(() => {
     selectionRangeRef.current = selection;
@@ -206,7 +198,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     ro.observe(el);
 
     return () => ro.disconnect();
-  }, []);
+  }, [updateRectRef]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -488,7 +480,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const { renderStartColumn, renderEndColumn } = useMemo(() => {
     if (columnWidth <= 0) return { renderStartColumn: 0, renderEndColumn: Math.min(totalColumns - 1, 1) };
 
-    const firstVisible = Math.floor(scrollLeftRef.current / columnWidth);
+    const firstVisible = Math.floor(scrollLeft / columnWidth);
     const overscan = OVERSCAN_COLUMNS;
     const visibleCount = VISIBLE_COLUMNS;
 
@@ -535,7 +527,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return { frame, trackId };
   }, []);
 
-  const getRulerTarget = (target: EventTarget | null): { frame: number } | null => {
+  const getRulerTarget = useCallback((target: EventTarget | null): { frame: number } | null => {
     if (!(target instanceof HTMLElement)) return null;
     const cell = target.closest<HTMLElement>('[data-frame-index][data-ruler]');
     if (!cell) return null;
@@ -544,7 +536,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const frame = Number(frameAttr);
     if (Number.isNaN(frame)) return null;
     return { frame };
-  };
+  }, []);
 
   const getTrackAtPoint = useCallback(
     (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
@@ -877,7 +869,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    const rect = el.getBoundingClientRect();
+    if (!rectRef.current) {
+      updateRectRef();
+    }
+    const rect = rectRef.current;
+    if (!rect) {
+      stopAutoScroll();
+      return;
+    }
     const { pointerX, pointerY, pointerType } = autoScrollRef.current;
     const edge = EDGE_SCROLL_SIZE;
 
