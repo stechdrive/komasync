@@ -12,6 +12,7 @@ type VadWorkerRequest = {
 type VadWorkerResponse = {
   id: number;
   frames?: FrameData[];
+  debug?: VadWorkerDebug;
   error?: string;
 };
 
@@ -22,10 +23,29 @@ const PROB_MIN = 0.05;
 const PROB_MAX = 0.95;
 const NOISE_FLOOR_QUANTILE = 0.2;
 const NOISE_FLOOR_MULTIPLIER = 2.0;
-const START_PREROLL_FRAMES = 1;
-const START_PREROLL_VOLUME_RATIO = 0.35;
+// Silero出力が極端に低いときの自動フォールバックを無効化する。
+const ENABLE_LOW_PROB_FALLBACK = false;
+const SILERO_MIN_PROB_MAX = 0.12;
+const START_PREROLL_FRAMES = 3;
+const START_PREROLL_VOLUME_RATIO = 0.2;
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+type VadWorkerDebug = {
+  probabilitiesLength: number;
+  probMin: number | null;
+  probMax: number | null;
+  probNanCount: number;
+  noiseFloor: number | null;
+  autoThreshold: number | null;
+  baseThreshold: number | null;
+  thresholdScale: number | null;
+  startThreshold: number | null;
+  endThreshold: number | null;
+  speechRatio: number;
+  holdFrames: number;
+  usedFallbackRms: boolean;
+};
 
 const applySpeechPreroll = (frames: FrameData[], tuning: VadTuning): void => {
   if (frames.length < 2 || START_PREROLL_FRAMES <= 0) return;
@@ -277,9 +297,28 @@ const runSilero = async (samples: Float32Array, baseUrl: string): Promise<Float3
   return Float32Array.from(probs);
 };
 
-const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
+const analyze = async (request: VadWorkerRequest): Promise<{ frames: FrameData[]; debug: VadWorkerDebug }> => {
   const { samples, sampleRate, fps, tuning, baseUrl } = request;
-  if (samples.length === 0 || sampleRate <= 0 || fps <= 0) return [];
+  if (samples.length === 0 || sampleRate <= 0 || fps <= 0) {
+    return {
+      frames: [],
+      debug: {
+        probabilitiesLength: 0,
+        probMin: null,
+        probMax: null,
+        probNanCount: 0,
+        noiseFloor: null,
+        autoThreshold: null,
+        baseThreshold: null,
+        thresholdScale: null,
+        startThreshold: null,
+        endThreshold: null,
+        speechRatio: clamp(tuning.speechRatio ?? 0.5, 0.1, 0.95),
+        holdFrames: Math.max(1, Math.round(tuning.holdFrames ?? 2)),
+        usedFallbackRms: true,
+      },
+    };
+  }
 
   const resampled = resampleTo16k(samples, sampleRate);
   const probabilities = await runSilero(resampled, baseUrl);
@@ -287,6 +326,34 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
   const baseThreshold = clamp(tuning.probabilityBase ?? 0.5, PROB_MIN, PROB_MAX);
   const thresholdScale = clamp(tuning.thresholdScale ?? 1, 0.5, 1.5);
   const noiseFloor = quantile(probabilities, NOISE_FLOOR_QUANTILE);
+
+  const totalFrames = Math.round((samples.length * fps) / sampleRate);
+  const frames: FrameData[] = [];
+
+  let active = false;
+  let belowCount = 0;
+
+  let probMin = Number.POSITIVE_INFINITY;
+  let probMax = Number.NEGATIVE_INFINITY;
+  let probNanCount = 0;
+  if (probabilities.length > 0) {
+    probabilities.forEach((value) => {
+      if (Number.isNaN(value)) {
+        probNanCount += 1;
+        return;
+      }
+      if (value < probMin) probMin = value;
+      if (value > probMax) probMax = value;
+    });
+  }
+
+  const forceFallbackRms =
+    ENABLE_LOW_PROB_FALLBACK &&
+    probabilities.length > 0 &&
+    probMax !== Number.NEGATIVE_INFINITY &&
+    !Number.isNaN(probMax) &&
+    probMax < SILERO_MIN_PROB_MAX;
+
   // 自動最適化: ノイズ床に応じて閾値を補正する。
   const autoThreshold = Math.max(baseThreshold, noiseFloor * NOISE_FLOOR_MULTIPLIER);
   const startThreshold = clamp(autoThreshold * thresholdScale, PROB_MIN, PROB_MAX);
@@ -295,12 +362,6 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
 
   const speechRatio = clamp(tuning.speechRatio ?? 0.5, 0.1, 0.95);
   const holdFrames = Math.max(1, Math.round(tuning.holdFrames ?? 2));
-
-  const totalFrames = Math.round((samples.length * fps) / sampleRate);
-  const frames: FrameData[] = [];
-
-  let active = false;
-  let belowCount = 0;
 
   for (let i = 0; i < totalFrames; i++) {
     const startSample = frameToSampleIndex(i, sampleRate, fps);
@@ -314,7 +375,7 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
     const rms = frameSampleCount > 0 ? Math.sqrt(sumSquares / frameSampleCount) : 0;
 
     let frameSpeech = false;
-    if (probabilities.length > 0) {
+    if (!forceFallbackRms && probabilities.length > 0) {
       const frameStartTime = i / fps;
       const frameEndTime = (i + 1) / fps;
       const frameStartSample16k = Math.max(0, Math.floor(frameStartTime * VAD_SAMPLE_RATE));
@@ -363,7 +424,25 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
   }
 
   applySpeechPreroll(frames, tuning);
-  return frames;
+  return {
+    frames,
+    debug: {
+      probabilitiesLength: probabilities.length,
+      probMin: probabilities.length > 0 && probMin !== Number.POSITIVE_INFINITY ? probMin : null,
+      probMax: probabilities.length > 0 && probMax !== Number.NEGATIVE_INFINITY ? probMax : null,
+      probNanCount,
+      noiseFloor: probabilities.length > 0 ? noiseFloor : null,
+      autoThreshold: probabilities.length > 0 ? autoThreshold : null,
+      baseThreshold: probabilities.length > 0 ? baseThreshold : null,
+      thresholdScale: probabilities.length > 0 ? thresholdScale : null,
+      startThreshold:
+        probabilities.length > 0 && !forceFallbackRms ? startThreshold : (tuning.startThreshold ?? null),
+      endThreshold: probabilities.length > 0 && !forceFallbackRms ? endThreshold : (tuning.endThreshold ?? null),
+      speechRatio,
+      holdFrames,
+      usedFallbackRms: probabilities.length === 0 || forceFallbackRms,
+    },
+  };
 };
 
 self.onmessage = (event) => {
@@ -372,8 +451,8 @@ self.onmessage = (event) => {
 
   void (async () => {
     try {
-      const frames = await analyze(request);
-      const response: VadWorkerResponse = { id: request.id, frames };
+      const { frames, debug } = await analyze(request);
+      const response: VadWorkerResponse = { id: request.id, frames, debug };
       self.postMessage(response);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

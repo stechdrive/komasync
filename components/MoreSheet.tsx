@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
 import { Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
@@ -16,7 +16,7 @@ type MoreSheetProps = {
   isVadAuto: boolean;
   vadEngineStatus: SileroVadStatus;
   vadEngineError: SileroVadError;
-  inputRms: number;
+  inputRmsRef: React.MutableRefObject<number>;
   playWhileRecording: boolean;
   onClose: () => void;
   onExportAudio: () => void;
@@ -79,7 +79,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   isVadAuto,
   vadEngineStatus,
   vadEngineError,
-  inputRms,
+  inputRmsRef,
   playWhileRecording,
   onClose,
   onExportAudio,
@@ -94,6 +94,30 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   onTogglePlayWhileRecording,
 }) => {
   const [isVadDetailsOpen, setIsVadDetailsOpen] = useState(false);
+  const [inputRms, setInputRms] = useState(0);
+  useEffect(() => {
+    if (!isOpen) {
+      setInputRms(0);
+      return;
+    }
+
+    let rafId = 0;
+    const tick = () => {
+      const nextValue = inputRmsRef.current;
+      setInputRms((prev) => (prev === nextValue ? prev : nextValue));
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    setInputRms(inputRmsRef.current);
+    rafId = window.requestAnimationFrame(tick);
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [isOpen, inputRmsRef]);
+
   if (!isOpen) return null;
 
   const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? `Track ${recordTrackId}`;

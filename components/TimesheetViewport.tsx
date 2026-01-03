@@ -7,6 +7,7 @@ import { EditTarget, SelectionRange } from '@/domain/editTypes';
 type TimesheetViewportProps = {
   tracks: Track[];
   currentFrame: number;
+  virtualMaxFrames: number;
   editTarget: EditTarget;
   selection: SelectionRange | null;
   fps: number;
@@ -21,6 +22,7 @@ type TimesheetViewportProps = {
   onOpenSelectionMenu?: (point: { x: number; y: number }) => void;
   onSelectionChange?: (range: SelectionRange | null) => void;
   onSelectionScrub?: (frame: number, trackId: string) => void;
+  onSelectionCommit?: () => void;
   onTrackSelect?: (trackId: string) => void;
   onScrubStart?: (frame: number) => void;
   onScrubMove?: (frame: number) => void;
@@ -28,15 +30,21 @@ type TimesheetViewportProps = {
   onZoomChange?: (zoom: number) => void;
 };
 
+type TrackRenderData = Pick<Track, 'id' | 'frames' | 'speechOverrides'>;
+type TrackDataKey = Pick<Track, 'frames' | 'speechOverrides'>;
+
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 const LONG_PRESS_MENU_MS = 700;
 const EDGE_SCROLL_SIZE = 32;
 const EDGE_SCROLL_MAX_SPEED = 20;
 const EDGE_SCROLL_OFFSET = 10;
+const OVERSCAN_COLUMNS = 3;
+const VISIBLE_COLUMNS = 2;
 
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
   currentFrame,
+  virtualMaxFrames: virtualMaxFramesProp,
   editTarget,
   selection,
   fps,
@@ -51,6 +59,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   onOpenSelectionMenu,
   onSelectionChange,
   onSelectionScrub,
+  onSelectionCommit,
   onTrackSelect,
   onScrubStart,
   onScrubMove,
@@ -93,15 +102,30 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     contentY: number;
   } | null>(null);
   const prevMetricsRef = useRef<{ columnWidth: number; rowHeight: number } | null>(null);
+  const zoomScrollRafRef = useRef<number | null>(null);
   const selectionAnchorRef = useRef<number | null>(null);
   const isSelectingRef = useRef(false);
   const selectionRangeRef = useRef<SelectionRange | null>(selection);
+  const suppressBackdropClickRef = useRef(false);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const panPointerIdRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const scrollLeftRef = useRef(0);
+  const scrollLeftRafRef = useRef<number | null>(null);
+  const scrollLeftFlushTimerRef = useRef<number | null>(null);
+  const rectRef = useRef<{
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    height: number;
+    clientWidth: number;
+    clientHeight: number;
+  } | null>(null);
   const [wrapCue, setWrapCue] = useState<'up' | 'down' | null>(null);
   const wrapCueRef = useRef<'up' | 'down' | null>(null);
   const autoScrollRef = useRef<{
@@ -112,6 +136,22 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }>({ rafId: null, pointerX: 0, pointerY: 0, pointerType: 'mouse' });
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onSelectionScrubRef = useRef(onSelectionScrub);
+  const updateRectRef = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  }, []);
+
   const isIOS = useMemo(() => {
     if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
     const ua = navigator.userAgent;
@@ -137,7 +177,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
   const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
-  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1);
+  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1, virtualMaxFramesProp ?? 0);
   const totalColumns = Math.max(2, Math.ceil(virtualMaxFrames / framesPerColumn));
 
   useEffect(() => {
@@ -148,6 +188,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const rect = el.getBoundingClientRect();
       setViewportWidth(rect.width);
       setViewportHeight(rect.height);
+      updateRectRef();
     };
 
     updateSize();
@@ -161,19 +202,48 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     ro.observe(el);
 
     return () => ro.disconnect();
-  }, []);
+  }, [updateRectRef]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
+    scrollLeftRef.current = el.scrollLeft;
+    setScrollLeft(el.scrollLeft);
+
+    const flushScrollLeft = () => {
+      scrollLeftRafRef.current = null;
+      setScrollLeft(scrollLeftRef.current);
+    };
+
     const onScroll = () => {
-      setScrollLeft(el.scrollLeft);
+      scrollLeftRef.current = el.scrollLeft;
+      updateRectRef();
+      if (scrollLeftRafRef.current === null) {
+        scrollLeftRafRef.current = window.requestAnimationFrame(flushScrollLeft);
+      }
+      if (scrollLeftFlushTimerRef.current !== null) {
+        window.clearTimeout(scrollLeftFlushTimerRef.current);
+      }
+      scrollLeftFlushTimerRef.current = window.setTimeout(() => {
+        scrollLeftFlushTimerRef.current = null;
+        setScrollLeft(scrollLeftRef.current);
+      }, 0);
     };
 
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (scrollLeftRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollLeftRafRef.current);
+        scrollLeftRafRef.current = null;
+      }
+      if (scrollLeftFlushTimerRef.current !== null) {
+        window.clearTimeout(scrollLeftFlushTimerRef.current);
+        scrollLeftFlushTimerRef.current = null;
+      }
+    };
+  }, [updateRectRef]);
 
   const baseColumnWidth = useMemo(() => {
     if (viewportWidth <= 0) return 1;
@@ -196,21 +266,85 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
 
-  const trackVolumeMax = useMemo(() => {
-    const maxMap = new Map<string, number>();
-    tracks.forEach((track) => {
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || columnWidth <= 0) return;
+    const maxScrollLeft = Math.max(0, totalColumns * columnWidth - el.clientWidth);
+    const currentLeft = el.scrollLeft;
+    const nextLeft = Math.min(currentLeft, maxScrollLeft);
+    if (nextLeft !== currentLeft) {
+      el.scrollLeft = nextLeft;
+    }
+    if (scrollLeftRef.current !== nextLeft) {
+      scrollLeftRef.current = nextLeft;
+      setScrollLeft(nextLeft);
+    }
+  }, [columnWidth, totalColumns]);
+
+  const trackRenderData = useMemo<TrackRenderData[]>(
+    () =>
+      tracks.map((track) => ({
+        id: track.id,
+        frames: track.frames,
+        speechOverrides: track.speechOverrides,
+      })),
+    [tracks]
+  );
+
+  const trackDataKeys = useMemo<TrackDataKey[]>(
+    () =>
+      trackRenderData.map((track) => ({
+        frames: track.frames,
+        speechOverrides: track.speechOverrides,
+      })),
+    [trackRenderData]
+  );
+
+  const trackOrderKey = useMemo(() => trackRenderData.map((track) => track.id).join('|'), [trackRenderData]);
+
+  const trackMaxVolumeCacheRef = useRef<Map<string, { framesRef: Track['frames']; max: number }>>(new Map());
+  const trackMaxVolumes = useMemo(() => {
+    const cache = trackMaxVolumeCacheRef.current;
+    const next = trackRenderData.map((track) => {
+      const cached = cache.get(track.id);
+      if (cached && cached.framesRef === track.frames) {
+        return cached.max;
+      }
       let max = 0;
       track.frames.forEach((frame) => {
         if (frame.volume > max) max = frame.volume;
       });
-      maxMap.set(track.id, max);
+      cache.set(track.id, { framesRef: track.frames, max });
+      return max;
     });
-    return maxMap;
-  }, [tracks]);
+
+    const activeIds = new Set(trackRenderData.map((track) => track.id));
+    Array.from(cache.keys()).forEach((key) => {
+      if (!activeIds.has(key)) cache.delete(key);
+    });
+
+    return next;
+  }, [trackRenderData]);
+
+  const activeTrackId = useMemo(() => (editTarget === 'all' ? null : editTarget), [editTarget]);
 
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
+
+  const layoutKey = useMemo(
+    () =>
+      [
+        columnWidth,
+        columnHeight,
+        rowHeight,
+        rulerWidth,
+        tracks.length,
+        touchActionValue,
+        fps,
+      ].join('|'),
+    [columnHeight, columnWidth, fps, rowHeight, rulerWidth, touchActionValue, tracks.length]
+  );
 
   const scrollMetricsRef = useRef({
     columnWidth,
@@ -272,7 +406,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       }
 
       if (nextLeft !== el.scrollLeft || nextTop !== el.scrollTop) {
-        el.scrollTo({ left: nextLeft, top: nextTop, behavior: options?.behavior ?? 'smooth' });
+        const behavior = options?.behavior ?? 'smooth';
+        el.scrollTo({ left: nextLeft, top: nextTop, behavior });
+        if (behavior === 'auto') {
+          scrollLeftRef.current = nextLeft;
+        }
       }
     },
     [columnWidth, framesPerColumn, rowHeight]
@@ -306,10 +444,24 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const nextScrollTop = anchorContentY * scaleY - (anchorClientY - rect.top);
 
     zoomAnchorRef.current = null;
-    requestAnimationFrame(() => {
+    if (zoomScrollRafRef.current !== null) {
+      cancelAnimationFrame(zoomScrollRafRef.current);
+    }
+    zoomScrollRafRef.current = requestAnimationFrame(() => {
+      zoomScrollRafRef.current = null;
       el.scrollTo({ left: nextScrollLeft, top: nextScrollTop });
+      scrollLeftRef.current = nextScrollLeft;
     });
   }, [columnWidth, rowHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (zoomScrollRafRef.current !== null) {
+        cancelAnimationFrame(zoomScrollRafRef.current);
+        zoomScrollRafRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAutoScrollEnabled) {
@@ -328,6 +480,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const targetLeft = sheetIndex * COLUMNS_PER_SHEET * columnWidth;
       const behavior: ScrollBehavior = isScrubbing ? 'auto' : 'smooth';
       el.scrollTo({ left: targetLeft, behavior });
+      if (behavior === 'auto') {
+        scrollLeftRef.current = targetLeft;
+      }
       return;
     }
 
@@ -348,7 +503,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   useEffect(() => {
     if (!onFirstVisibleColumnChange) return;
-    const firstVisible = Math.floor(scrollLeft / columnWidth);
+    const firstVisible = Math.floor(scrollLeftRef.current / columnWidth);
     if (lastFirstVisibleColRef.current === firstVisible) return;
     lastFirstVisibleColRef.current = firstVisible;
     onFirstVisibleColumnChange(firstVisible);
@@ -358,13 +513,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (columnWidth <= 0) return { renderStartColumn: 0, renderEndColumn: Math.min(totalColumns - 1, 1) };
 
     const firstVisible = Math.floor(scrollLeft / columnWidth);
-    const overscan = 2;
-    const visibleCount = 2;
+    const overscan = OVERSCAN_COLUMNS;
+    const visibleCount = VISIBLE_COLUMNS;
 
     const start = Math.max(0, firstVisible - overscan);
     const end = Math.min(totalColumns - 1, firstVisible + (visibleCount - 1) + overscan);
     return { renderStartColumn: start, renderEndColumn: end };
   }, [columnWidth, scrollLeft, totalColumns]);
+
+  const getRenderRange = useCallback(() => {
+    if (columnWidth <= 0) {
+      return { start: 0, end: Math.min(totalColumns - 1, 1) };
+    }
+    const firstVisible = Math.floor(scrollLeftRef.current / columnWidth);
+    const start = Math.max(0, firstVisible - OVERSCAN_COLUMNS);
+    const end = Math.min(totalColumns - 1, firstVisible + (VISIBLE_COLUMNS - 1) + OVERSCAN_COLUMNS);
+    return { start, end };
+  }, [columnWidth, totalColumns]);
 
   const visibleColumnIndices = useMemo(() => {
     const cols: number[] = [];
@@ -374,8 +539,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const leftSpacerWidth = renderStartColumn * columnWidth;
   const rightSpacerWidth = Math.max(0, totalColumns - renderEndColumn - 1) * columnWidth;
+  const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
+  const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
+    if (suppressBackdropClickRef.current) {
+      suppressBackdropClickRef.current = false;
+      return;
+    }
     if (e.target === e.currentTarget) onBackgroundClick?.();
   };
 
@@ -392,15 +563,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return { frame, trackId };
   }, []);
 
-  const getTrackAtPoint = useCallback(
-    (x: number, y: number): { frame: number; trackId: string } | null => {
-      const el = document.elementFromPoint(x, y);
-      return getTrackTarget(el);
-    },
-    [getTrackTarget]
-  );
-
-  const getRulerTarget = (target: EventTarget | null): { frame: number } | null => {
+  const getRulerTarget = useCallback((target: EventTarget | null): { frame: number } | null => {
     if (!(target instanceof HTMLElement)) return null;
     const cell = target.closest<HTMLElement>('[data-frame-index][data-ruler]');
     if (!cell) return null;
@@ -409,19 +572,302 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const frame = Number(frameAttr);
     if (Number.isNaN(frame)) return null;
     return { frame };
-  };
+  }, []);
 
-  const getScrubFrameAtPoint = (x: number, y: number): number | null => {
-    const el = document.elementFromPoint(x, y);
-    if (!(el instanceof HTMLElement)) return null;
-    const cell = el.closest<HTMLElement>('[data-frame-index]');
-    if (!cell) return null;
-    const frameAttr = cell.dataset.frameIndex;
-    if (!frameAttr) return null;
-    const frame = Number(frameAttr);
-    if (Number.isNaN(frame)) return null;
-    return frame;
-  };
+  const getTrackAtPoint = useCallback(
+    (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
+      const el = scrollRef.current;
+      const rect = rectRef.current;
+      if (!el || !rect) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const edgeEpsilon = 1;
+
+      if (
+        localX < 0 ||
+        localY < 0 ||
+        localX > rect.width ||
+        localY > rect.height ||
+        localX <= edgeEpsilon ||
+        localX >= rect.width - edgeEpsilon ||
+        localY <= edgeEpsilon ||
+        localY >= rect.height - edgeEpsilon
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      if (localX > rect.clientWidth || localY > rect.clientHeight) {
+        return null;
+      }
+
+      if (columnWidth <= 0 || rowHeight <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const contentX = localX + el.scrollLeft;
+      const contentY = localY + el.scrollTop;
+      const columnIndex = Math.floor(contentX / columnWidth);
+      const rowIndex = Math.floor(contentY / rowHeight);
+      const { start: renderStart, end: renderEnd } = getRenderRange();
+
+      if (
+        columnIndex < 0 ||
+        rowIndex < 0 ||
+        columnIndex >= totalColumns ||
+        rowIndex >= framesPerColumn ||
+        columnIndex < renderStart ||
+        columnIndex > renderEnd
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      if (tracks.length <= 0 || columnWidth <= rulerWidth * 2) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const columnX = contentX - columnIndex * columnWidth;
+      const trackAreaWidth = columnWidth - rulerWidth * 2;
+      if (trackAreaWidth <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const trackX = columnX - rulerWidth;
+      if (trackX < 0 || trackX >= trackAreaWidth) return null;
+      if (trackX <= edgeEpsilon || trackX >= trackAreaWidth - edgeEpsilon) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const trackColumnWidth = trackAreaWidth / tracks.length;
+      if (trackColumnWidth <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getTrackTarget(dom);
+      }
+
+      const trackIndex = Math.floor(trackX / trackColumnWidth);
+      if (trackIndex < 0 || trackIndex >= tracks.length) return null;
+
+      const frame = columnIndex * framesPerColumn + rowIndex;
+      return { frame, trackId: tracks[trackIndex]?.id };
+    },
+    [
+      columnWidth,
+      framesPerColumn,
+      getRenderRange,
+      rowHeight,
+      rulerWidth,
+      totalColumns,
+      tracks,
+      getTrackTarget,
+    ]
+  );
+
+  const getRulerFrameAtPoint = useCallback(
+    (clientX: number, clientY: number): { frame: number } | null => {
+      const el = scrollRef.current;
+      const rect = rectRef.current;
+      if (!el || !rect) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const edgeEpsilon = 1;
+
+      if (
+        localX < 0 ||
+        localY < 0 ||
+        localX > rect.width ||
+        localY > rect.height ||
+        localX <= edgeEpsilon ||
+        localX >= rect.width - edgeEpsilon ||
+        localY <= edgeEpsilon ||
+        localY >= rect.height - edgeEpsilon
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      if (localX > rect.clientWidth || localY > rect.clientHeight) {
+        return null;
+      }
+
+      if (columnWidth <= 0 || rowHeight <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      const contentX = localX + el.scrollLeft;
+      const contentY = localY + el.scrollTop;
+      const columnIndex = Math.floor(contentX / columnWidth);
+      const rowIndex = Math.floor(contentY / rowHeight);
+      const { start: renderStart, end: renderEnd } = getRenderRange();
+
+      if (
+        columnIndex < 0 ||
+        rowIndex < 0 ||
+        columnIndex >= totalColumns ||
+        rowIndex >= framesPerColumn ||
+        columnIndex < renderStart ||
+        columnIndex > renderEnd
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      const columnX = contentX - columnIndex * columnWidth;
+      const leftRulerEdge = rulerWidth;
+      const rightRulerEdge = columnWidth - rulerWidth;
+      const isInLeftRuler = columnX >= 0 && columnX <= leftRulerEdge;
+      const isInRightRuler = columnX >= rightRulerEdge && columnX <= columnWidth;
+
+      if (!isInLeftRuler && !isInRightRuler) return null;
+      if (
+        Math.abs(columnX - leftRulerEdge) <= edgeEpsilon ||
+        Math.abs(columnX - rightRulerEdge) <= edgeEpsilon
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        return getRulerTarget(dom);
+      }
+
+      const frame = columnIndex * framesPerColumn + rowIndex;
+      return { frame };
+    },
+    [
+      columnWidth,
+      framesPerColumn,
+      getRenderRange,
+      getRulerTarget,
+      rowHeight,
+      rulerWidth,
+      totalColumns,
+    ]
+  );
+
+  const getScrubFrameAtPoint = useCallback(
+    (clientX: number, clientY: number): number | null => {
+      const el = scrollRef.current;
+      const rect = rectRef.current;
+      if (!el || !rect) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        if (!(dom instanceof HTMLElement)) return null;
+        const cell = dom.closest<HTMLElement>('[data-frame-index]');
+        if (!cell) return null;
+        const frameAttr = cell.dataset.frameIndex;
+        if (!frameAttr) return null;
+        const frame = Number(frameAttr);
+        if (Number.isNaN(frame)) return null;
+        return frame;
+      }
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        if (!(dom instanceof HTMLElement)) return null;
+        const cell = dom.closest<HTMLElement>('[data-frame-index]');
+        if (!cell) return null;
+        const frameAttr = cell.dataset.frameIndex;
+        if (!frameAttr) return null;
+        const frame = Number(frameAttr);
+        if (Number.isNaN(frame)) return null;
+        return frame;
+      }
+
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const edgeEpsilon = 1;
+
+      if (
+        localX < 0 ||
+        localY < 0 ||
+        localX > rect.width ||
+        localY > rect.height ||
+        localX <= edgeEpsilon ||
+        localX >= rect.width - edgeEpsilon ||
+        localY <= edgeEpsilon ||
+        localY >= rect.height - edgeEpsilon
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        if (!(dom instanceof HTMLElement)) return null;
+        const cell = dom.closest<HTMLElement>('[data-frame-index]');
+        if (!cell) return null;
+        const frameAttr = cell.dataset.frameIndex;
+        if (!frameAttr) return null;
+        const frame = Number(frameAttr);
+        if (Number.isNaN(frame)) return null;
+        return frame;
+      }
+
+      if (localX > rect.clientWidth || localY > rect.clientHeight) {
+        return null;
+      }
+
+      if (columnWidth <= 0 || rowHeight <= 0) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        if (!(dom instanceof HTMLElement)) return null;
+        const cell = dom.closest<HTMLElement>('[data-frame-index]');
+        if (!cell) return null;
+        const frameAttr = cell.dataset.frameIndex;
+        if (!frameAttr) return null;
+        const frame = Number(frameAttr);
+        if (Number.isNaN(frame)) return null;
+        return frame;
+      }
+
+      const contentX = localX + el.scrollLeft;
+      const contentY = localY + el.scrollTop;
+      const columnIndex = Math.floor(contentX / columnWidth);
+      const rowIndex = Math.floor(contentY / rowHeight);
+      const { start: renderStart, end: renderEnd } = getRenderRange();
+
+      if (
+        columnIndex < 0 ||
+        rowIndex < 0 ||
+        columnIndex >= totalColumns ||
+        rowIndex >= framesPerColumn ||
+        columnIndex < renderStart ||
+        columnIndex > renderEnd
+      ) {
+        const dom = document.elementFromPoint(clientX, clientY);
+        if (!(dom instanceof HTMLElement)) return null;
+        const cell = dom.closest<HTMLElement>('[data-frame-index]');
+        if (!cell) return null;
+        const frameAttr = cell.dataset.frameIndex;
+        if (!frameAttr) return null;
+        const frame = Number(frameAttr);
+        if (Number.isNaN(frame)) return null;
+        return frame;
+      }
+
+      return columnIndex * framesPerColumn + rowIndex;
+    },
+    [
+      columnWidth,
+      framesPerColumn,
+      getRenderRange,
+      rowHeight,
+      totalColumns,
+    ]
+  );
 
   const updateWrapCue = useCallback((next: 'up' | 'down' | null) => {
     if (wrapCueRef.current === next) return;
@@ -459,7 +905,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    const rect = el.getBoundingClientRect();
+    if (!rectRef.current) {
+      updateRectRef();
+    }
+    const rect = rectRef.current;
+    if (!rect) {
+      stopAutoScroll();
+      return;
+    }
     const { pointerX, pointerY, pointerType } = autoScrollRef.current;
     const edge = EDGE_SCROLL_SIZE;
 
@@ -522,7 +975,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       nextLeft = clamp(el.scrollLeft + dirX * speedX, 0, maxScrollLeft);
     }
 
-    if (nextLeft !== el.scrollLeft) el.scrollLeft = nextLeft;
+    if (nextLeft !== el.scrollLeft) {
+      el.scrollLeft = nextLeft;
+      scrollLeftRef.current = nextLeft;
+    }
     if (nextTop !== el.scrollTop) el.scrollTop = nextTop;
 
     let cue: 'up' | 'down' | null = null;
@@ -552,7 +1008,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
-  }, [stopAutoScroll, updateSelectionAtPoint, updateWrapCue]);
+  }, [stopAutoScroll, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
 
   const startAutoScroll = useCallback((clientX: number, clientY: number, pointerType: string) => {
     autoScrollRef.current.pointerX = clientX;
@@ -610,6 +1066,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   const cancelPointerInteraction = () => {
+    const wasSelecting = isSelectingRef.current;
     clearLongPressTimer();
     longPressPointRef.current = null;
     pendingTapRef.current = null;
@@ -620,6 +1077,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
+    if (wasSelecting) {
+      suppressBackdropClickRef.current = true;
+      onSelectionCommit?.();
+    }
   };
 
   const stopPinch = () => {
@@ -657,6 +1118,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const dy = e.clientY - start.y;
     el.scrollLeft = start.scrollLeft - dx;
     el.scrollTop = start.scrollTop - dy;
+    scrollLeftRef.current = el.scrollLeft;
     e.preventDefault();
   };
 
@@ -698,17 +1160,25 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!onOpenSelectionMenu) return;
-    const target = getTrackTarget(e.target);
+    updateRectRef();
+    const target = getTrackAtPoint(e.clientX, e.clientY);
     if (!target) return;
     e.preventDefault();
     openSelectionMenu({ x: e.clientX, y: e.clientY }, target);
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    updateRectRef();
     updatePointer(e);
     const scrollEl = scrollRef.current;
-    if (allowSingleFingerPan && e.pointerType !== 'mouse' && scrollEl?.setPointerCapture) {
+    if (
+      scrollEl?.setPointerCapture &&
+      (e.pointerType !== 'mouse' || e.button === 0) &&
+      !scrollEl.hasPointerCapture?.(e.pointerId)
+    ) {
       scrollEl.setPointerCapture(e.pointerId);
+    }
+    if (allowSingleFingerPan && e.pointerType !== 'mouse' && scrollEl) {
       panStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -742,8 +1212,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    const rulerTarget = getRulerTarget(e.target);
-    const target = getTrackTarget(e.target);
+    const rulerTarget = getRulerFrameAtPoint(e.clientX, e.clientY);
+    const target = getTrackAtPoint(e.clientX, e.clientY);
     pendingTapRef.current = null;
     scrubPendingRef.current = null;
     selectionAnchorRef.current = null;
@@ -824,6 +1294,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           const dy = pinchInfo.center.y - panStart.centerY;
           el.scrollLeft = panStart.scrollLeft - dx;
           el.scrollTop = panStart.scrollTop - dy;
+          scrollLeftRef.current = el.scrollLeft;
         }
         e.preventDefault();
         return;
@@ -1025,6 +1496,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (isScrubbingRef.current) {
+      if (e.pointerType === 'mouse') {
+        suppressBackdropClickRef.current = true;
+      }
       onScrubEnd?.();
       isScrubbingRef.current = false;
       scrubPendingRef.current = null;
@@ -1035,13 +1509,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
+      suppressBackdropClickRef.current = true;
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       stopAutoScroll();
+      onSelectionCommit?.();
       return;
     }
 
     if (scrubPendingRef.current && !pending) {
+      if (e.pointerType === 'mouse') {
+        suppressBackdropClickRef.current = true;
+      }
       onFrameTap(scrubPendingRef.current.frame);
       scrubPendingRef.current = null;
       return;
@@ -1069,6 +1548,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       onSelectionChange?.(range);
     }
 
+    if (pending.pointerType === 'mouse') {
+      suppressBackdropClickRef.current = true;
+    }
     onFrameTap(pending.frame);
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     pendingTapRef.current = null;
@@ -1091,6 +1573,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     cancelPointerInteraction();
   };
 
+  const handlePointerLeave = (e: React.PointerEvent) => {
+    const scrollEl = scrollRef.current;
+    if (scrollEl?.hasPointerCapture?.(e.pointerId)) return;
+    handlePointerCancel(e);
+  };
+
   return (
     <div className="relative h-full w-full bg-gray-100 select-none">
       <div
@@ -1102,7 +1590,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerCancel}
+        onPointerLeave={handlePointerLeave}
         style={{ touchAction: touchActionValue }}
       >
         <div className="flex" style={{ width: `${totalColumns * columnWidth}px`, height: `${columnHeight}px` }}>
@@ -1110,25 +1598,62 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             <div className="shrink-0" style={{ width: `${leftSpacerWidth}px`, height: `${columnHeight}px` }} />
           )}
 
-          {visibleColumnIndices.map((columnIndex) => (
-            <TimesheetColumn
-              key={columnIndex}
-              columnIndex={columnIndex}
-              startFrame={columnIndex * framesPerColumn}
-              fps={fps}
-              tracks={tracks}
-              editTarget={editTarget}
-              cursorFrame={currentFrame}
-              selection={selection}
-              maxFrames={maxFrames}
-              columnWidth={columnWidth}
-              columnHeight={columnHeight}
-              rulerWidth={rulerWidth}
-              rowHeight={rowHeight}
-              trackVolumeMax={trackVolumeMax}
-              touchAction={touchActionValue}
-            />
-          ))}
+          {visibleColumnIndices.map((columnIndex) => {
+            const startFrame = columnIndex * framesPerColumn;
+            const columnEnd = startFrame + framesPerColumn - 1;
+            const cursorRow =
+              currentFrame >= startFrame && currentFrame <= columnEnd
+                ? Math.floor(currentFrame - startFrame)
+                : -1;
+
+            let selectionSlice: { startRow: number; endRow: number } | null = null;
+            if (
+              selectionStart !== null &&
+              selectionEnd !== null &&
+              selectionEnd >= startFrame &&
+              selectionStart <= columnEnd
+            ) {
+              const startRow = Math.max(0, Math.floor(selectionStart - startFrame));
+              const endRow = Math.min(framesPerColumn - 1, Math.floor(selectionEnd - startFrame));
+              selectionSlice = { startRow, endRow };
+            }
+
+            let pastEndStartRow: number | null = null;
+            if (maxFrames <= startFrame) {
+              pastEndStartRow = 0;
+            } else if (maxFrames <= columnEnd) {
+              pastEndStartRow = maxFrames - startFrame;
+            }
+
+            let endBoundaryRow: number | null = null;
+            if (maxFrames >= startFrame && maxFrames <= columnEnd) {
+              endBoundaryRow = maxFrames - startFrame;
+            }
+
+            return (
+              <TimesheetColumn
+                key={columnIndex}
+                columnIndex={columnIndex}
+                startFrame={startFrame}
+                fps={fps}
+                tracks={trackRenderData}
+                cursorRow={cursorRow}
+                selectionSlice={selectionSlice}
+                endBoundaryRow={endBoundaryRow}
+                pastEndStartRow={pastEndStartRow}
+                columnWidth={columnWidth}
+                columnHeight={columnHeight}
+                rulerWidth={rulerWidth}
+                rowHeight={rowHeight}
+                trackMaxVolumes={trackMaxVolumes}
+                trackDataKeys={trackDataKeys}
+                trackOrderKey={trackOrderKey}
+                activeTrackId={activeTrackId}
+                layoutKey={layoutKey}
+                touchAction={touchActionValue}
+              />
+            );
+          })}
 
           {rightSpacerWidth > 0 && (
             <div className="shrink-0" style={{ width: `${rightSpacerWidth}px`, height: `${columnHeight}px` }} />

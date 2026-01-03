@@ -18,8 +18,8 @@ type TrackStats = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
-const DEFAULT_THRESHOLD_SCALE = 0.95;
-const DEFAULT_STABILITY = 0.2;
+const DEFAULT_THRESHOLD_SCALE = 1;
+const DEFAULT_STABILITY = 0.4;
 
 const quantile = (values: number[], q: number): number => {
   if (values.length === 0) return 0;

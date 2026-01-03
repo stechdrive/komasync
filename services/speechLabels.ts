@@ -1,5 +1,7 @@
 import { Track } from '@/types';
 
+type SpeechTrack = Pick<Track, 'frames' | 'speechOverrides'>;
+
 // 1: セリフ強制、0: 自動、-1: 非セリフ強制
 export const createSpeechOverrides = (length: number): number[] => {
   const safeLength = Math.max(0, Math.floor(length));
@@ -85,7 +87,7 @@ export const overwriteOverrideRange = (
   return next;
 };
 
-export const getEffectiveSpeech = (track: Track, frameIndex: number): boolean => {
+export const getEffectiveSpeech = (track: SpeechTrack, frameIndex: number): boolean => {
   if (frameIndex < 0) return false;
   const override = track.speechOverrides[frameIndex] ?? 0;
   if (override === 1) return true;
