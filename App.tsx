@@ -194,6 +194,7 @@ export default function App() {
   const pendingRecordStartRef = useRef(false);
   const lastSingleTrackIdRef = useRef<string>('1');
   const currentFrameRef = useRef(0);
+  const lastFrameRef = useRef(0);
   const autoMicWarmupRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
   const recordingStateRef = useRef(recordingState);
@@ -263,6 +264,12 @@ export default function App() {
   useEffect(() => {
     currentFrameRef.current = currentFrame;
   }, [currentFrame]);
+
+  const commitCurrentFrame = useCallback((nextFrame: number) => {
+    const clampedFrame = Math.max(0, Math.floor(nextFrame));
+    currentFrameRef.current = clampedFrame;
+    setCurrentFrame(clampedFrame);
+  }, []);
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -595,7 +602,7 @@ export default function App() {
         setRecordTrackId('1');
         setEditTarget('1');
         lastSingleTrackIdRef.current = '1';
-        setCurrentFrame(0);
+        commitCurrentFrame(0);
         setSelection(null);
         setClipboardClip(null);
         setRecordingState(RecordingState.IDLE);
@@ -802,12 +809,16 @@ export default function App() {
 
     startTimeRef.current = ctx.currentTime - offsetTime;
     const expectedEndTime = startTimeRef.current + maxDuration;
+    const startFrameIndex = Math.max(0, Math.floor(startFrame));
+    currentFrameRef.current = startFrameIndex;
+    lastFrameRef.current = startFrameIndex;
 
     const updateFrame = () => {
       if (!audioContextRef.current) return;
       const currentTime = audioContextRef.current.currentTime;
       const elapsed = currentTime - startTimeRef.current;
-      const frame = Math.floor(elapsed * FPS);
+      const frame = Math.max(0, Math.floor(elapsed * FPS));
+      currentFrameRef.current = frame;
       
       // Auto-stop logic
       // If we are just PLAYING, stop when audio ends.
@@ -815,7 +826,8 @@ export default function App() {
       if (mode === RecordingState.PLAYING && currentTime >= expectedEndTime) {
         stopPlaybackLoop();
         const endFrame = Math.max(0, Math.min(maxFrames - 1, Math.floor(maxDuration * FPS) - 1));
-        setCurrentFrame(endFrame);
+        lastFrameRef.current = endFrame;
+        commitCurrentFrame(endFrame);
         setRecordingState(RecordingState.IDLE);
         return;
       }
@@ -823,7 +835,10 @@ export default function App() {
       // Update frame if state matches or if we are recording (even if audio finished)
       // Note: We check the ref or current state. Since this is a closure, we need to be careful.
       // However, we'll rely on the animation frame cancellation to stop this loop.
-      setCurrentFrame(frame);
+      if (frame !== lastFrameRef.current) {
+        lastFrameRef.current = frame;
+        commitCurrentFrame(frame);
+      }
       animationFrameRef.current = requestAnimationFrame(updateFrame);
     };
     
@@ -914,7 +929,7 @@ export default function App() {
     audioChunksRef.current = [];
 
     // Mark the frame where recording started (Punch-in support)
-    recordingStartFrameRef.current = currentFrame;
+    recordingStartFrameRef.current = currentFrameRef.current;
     recordingStartTimeRef.current = Date.now();
 
     mediaRecorderRef.current.ondataavailable = (event) => {
@@ -975,16 +990,22 @@ export default function App() {
 
     // Start Playback from CURRENT frame (not 0) if enabled
     if (playWhileRecording) {
-      startPlayback(currentFrame, RecordingState.RECORDING);
+      startPlayback(currentFrameRef.current, RecordingState.RECORDING);
     } else {
       // If not playing back, we still need to advance the frame counter for visual feedback
       // Adjust start time relative to current frame
-      const offsetTime = currentFrame / FPS;
+      const offsetTime = currentFrameRef.current / FPS;
       startTimeRef.current = (Date.now() / 1000) - offsetTime;
+      lastFrameRef.current = Math.max(0, Math.floor(currentFrameRef.current));
 
       const updateFrameSimple = () => {
         const elapsed = (Date.now() / 1000) - startTimeRef.current;
-        setCurrentFrame(Math.floor(elapsed * FPS));
+        const frame = Math.max(0, Math.floor(elapsed * FPS));
+        currentFrameRef.current = frame;
+        if (frame !== lastFrameRef.current) {
+          lastFrameRef.current = frame;
+          commitCurrentFrame(frame);
+        }
         animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
       };
       animationFrameRef.current = requestAnimationFrame(updateFrameSimple);
@@ -1226,7 +1247,7 @@ export default function App() {
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setSelection(null);
-      setCurrentFrame(range.startFrame);
+      commitCurrentFrame(range.startFrame);
     } catch (error) {
       console.error('Delete failed:', error);
       alert('削除操作に失敗しました。');
@@ -1239,6 +1260,7 @@ export default function App() {
 
     try {
       saveToHistory();
+      const insertFrame = currentFrameRef.current;
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
@@ -1262,9 +1284,9 @@ export default function App() {
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
           pendingVad.push({ id: track.id, buffer: newBuffer });
-          const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          const nextOverrides = insertOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
@@ -1289,8 +1311,8 @@ export default function App() {
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-          const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
+          const nextOverrides = insertOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
@@ -1313,7 +1335,6 @@ export default function App() {
   }, [
     clipboardClip,
     createEmptyFrames,
-    currentFrame,
     editTarget,
     getFrameCountFromBuffer,
     handlePause,
@@ -1332,6 +1353,7 @@ export default function App() {
 
     try {
       saveToHistory();
+      const insertFrame = currentFrameRef.current;
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
@@ -1355,9 +1377,9 @@ export default function App() {
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
+          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
           pendingVad.push({ id: track.id, buffer: newBuffer });
-          const nextOverrides = overwriteOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          const nextOverrides = overwriteOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
@@ -1382,8 +1404,8 @@ export default function App() {
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, currentFrame, FPS);
-          const nextOverrides = overwriteOverrideRange(baseOverrides, currentFrame, overrideSlice);
+          const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
+          const nextOverrides = overwriteOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
@@ -1406,7 +1428,6 @@ export default function App() {
   }, [
     clipboardClip,
     createEmptyFrames,
-    currentFrame,
     editTarget,
     getFrameCountFromBuffer,
     handlePause,
@@ -1424,6 +1445,7 @@ export default function App() {
 
     try {
       saveToHistory();
+      const insertFrame = currentFrameRef.current;
       const projectSampleRate = getProjectSampleRate();
 
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
@@ -1434,13 +1456,13 @@ export default function App() {
 
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
-        const newBuffer = insertSilenceFramesAtFrame(track.audioBuffer, currentFrame, 1, FPS, {
+        const newBuffer = insertSilenceFramesAtFrame(track.audioBuffer, insertFrame, 1, FPS, {
           sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
         pendingVad.push({ id: track.id, buffer: newBuffer });
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-        const nextOverrides = insertOverrideRange(baseOverrides, currentFrame, createSpeechOverrides(1));
+        const nextOverrides = insertOverrideRange(baseOverrides, insertFrame, createSpeechOverrides(1));
         return {
           ...track,
           audioBuffer: newBuffer,
@@ -1451,7 +1473,7 @@ export default function App() {
 
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
-      setCurrentFrame((prev) => prev + 1);
+      commitCurrentFrame(currentFrameRef.current + 1);
     } catch (error) {
       console.error('Insert 1f failed:', error);
       alert('+1f 挿入に失敗しました。');
@@ -1468,7 +1490,7 @@ export default function App() {
       const targetSet = new Set(targetIds);
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
       const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
-      const frameIndex = currentFrame;
+      const frameIndex = currentFrameRef.current;
 
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id) || !track.audioBuffer) return track;
@@ -1488,7 +1510,7 @@ export default function App() {
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setSelection(null);
       const nextMaxFrames = Math.max(0, ...nextTracks.map((track) => track.frames.length));
-      setCurrentFrame((prev) => Math.min(prev, Math.max(0, nextMaxFrames - 1)));
+      commitCurrentFrame(Math.min(currentFrameRef.current, Math.max(0, nextMaxFrames - 1)));
     } catch (error) {
       console.error('Delete 1f failed:', error);
       alert('-1f 削除に失敗しました。');
@@ -1506,9 +1528,10 @@ export default function App() {
     stopScrubState();
 
     const endFrame = Math.max(0, maxFrames - 1);
-    const startFrame = currentFrame >= endFrame ? 0 : currentFrame;
-    if (startFrame !== currentFrame) {
-      setCurrentFrame(startFrame);
+    const currentFrameSnapshot = currentFrameRef.current;
+    const startFrame = currentFrameSnapshot >= endFrame ? 0 : currentFrameSnapshot;
+    if (startFrame !== currentFrameSnapshot) {
+      commitCurrentFrame(startFrame);
     }
 
     setRecordingState(RecordingState.PLAYING);
@@ -1625,7 +1648,7 @@ export default function App() {
       handlePause();
     }
 
-    setCurrentFrame(nextFrame);
+    commitCurrentFrame(nextFrame);
   };
 
   const handleTrackSelect = (trackId: string) => {
@@ -1725,10 +1748,9 @@ export default function App() {
       return;
     }
     const nextFrame = Math.max(0, currentFrameRef.current + 1);
-    currentFrameRef.current = nextFrame;
-    setCurrentFrame(nextFrame);
+    commitCurrentFrame(nextFrame);
     startScrubState(SCRUB_STATE_RESET_MS);
-  }, [recordingState, startScrubState]);
+  }, [commitCurrentFrame, recordingState, startScrubState]);
 
   const handleMarkSpeech = useCallback(() => {
     applySpeechOverrideToSelection(1);
@@ -1775,7 +1797,7 @@ export default function App() {
     startScrubState();
     scrubLastTimeRef.current = 0;
     const nextFrame = Math.max(0, Math.floor(frame));
-    setCurrentFrame(nextFrame);
+    commitCurrentFrame(nextFrame);
     playScrubPreview(nextFrame);
   };
 
@@ -1783,7 +1805,7 @@ export default function App() {
     if (!isScrubbingRef.current) return;
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
     const nextFrame = Math.max(0, Math.floor(frame));
-    setCurrentFrame(nextFrame);
+    commitCurrentFrame(nextFrame);
     playScrubPreview(nextFrame);
   };
 
@@ -1821,8 +1843,7 @@ export default function App() {
 
         const delta = e.key === 'ArrowUp' ? -1 : 1;
         const nextFrame = Math.max(0, currentFrameRef.current + delta);
-        currentFrameRef.current = nextFrame;
-        setCurrentFrame(nextFrame);
+        commitCurrentFrame(nextFrame);
         playScrubPreview(nextFrame);
         return;
       }
@@ -1858,6 +1879,7 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    commitCurrentFrame,
     handleUndo,
     handleRedo,
     handleCut,
