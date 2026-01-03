@@ -55,8 +55,8 @@ const MIC_SLEEP_CHECK_MS = 15 * 1000;
 const MIN_SHEET_ZOOM = 1;
 const MAX_SHEET_ZOOM = 3;
 const SHEET_ZOOM_STEP = 0.1;
-const AUTO_VAD_BASE_THRESHOLD_SCALE = 0.95;
-const AUTO_VAD_BASE_STABILITY = 0.2;
+const AUTO_VAD_BASE_THRESHOLD_SCALE = 1;
+const AUTO_VAD_BASE_STABILITY = 0.4;
 const MIN_AUTO_TUNE_FRAMES = 6;
 
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
