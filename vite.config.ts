@@ -18,10 +18,10 @@ export default defineConfig(({ mode }) => {
       return base;
     };
 
-    // GitHub Pages（https://<user>.github.io/<repo>/）向けの既定値。
-    // リポジトリ名が異なる場合は `VITE_BASE=/your-repo/` を指定してください。
+    // 既定は相対パス配信（custom domain / GitHub Pages 両対応）。
+    // リポジトリ名を固定したい場合は `VITE_BASE=/your-repo/` を指定してください。
     const base = mode === 'production'
-      ? normalizeBase(env.VITE_BASE || '/komasync/')
+      ? normalizeBase(env.VITE_BASE || './')
       : '/';
     return {
       base,
