@@ -22,8 +22,28 @@ const PROB_MIN = 0.05;
 const PROB_MAX = 0.95;
 const NOISE_FLOOR_QUANTILE = 0.2;
 const NOISE_FLOOR_MULTIPLIER = 2.0;
+const START_PREROLL_FRAMES = 1;
+const START_PREROLL_VOLUME_RATIO = 0.35;
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+const applySpeechPreroll = (frames: FrameData[], tuning: VadTuning): void => {
+  if (frames.length < 2 || START_PREROLL_FRAMES <= 0) return;
+  // 口パク優先で開始を前倒し（前フレームに微小な音量があればセリフ扱い）
+  const volumeThreshold = (tuning.startThreshold ?? 0) * START_PREROLL_VOLUME_RATIO;
+  for (let i = 1; i < frames.length; i++) {
+    if (!frames[i - 1].isSpeech && frames[i].isSpeech) {
+      for (let j = 1; j <= START_PREROLL_FRAMES; j += 1) {
+        const index = i - j;
+        if (index < 0) break;
+        const target = frames[index];
+        if (!target.isSpeech && target.volume >= volumeThreshold) {
+          target.isSpeech = true;
+        }
+      }
+    }
+  }
+};
 
 const frameToSampleIndex = (frame: number, sampleRate: number, fps: number): number =>
   Math.round((frame * sampleRate) / fps);
@@ -342,6 +362,7 @@ const analyze = async (request: VadWorkerRequest): Promise<FrameData[]> => {
     });
   }
 
+  applySpeechPreroll(frames, tuning);
   return frames;
 };
 
