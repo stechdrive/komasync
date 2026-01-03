@@ -13,11 +13,33 @@ type VadWorkerRequest = {
 type VadWorkerResponse = {
   id: number;
   frames?: FrameData[];
+  debug?: VadWorkerDebug;
   error?: string;
 };
 
 export type SileroVadStatus = 'idle' | 'silero' | 'fallback';
 export type SileroVadError = string | null;
+
+export type VadWorkerDebug = {
+  probabilitiesLength: number;
+  probMin: number | null;
+  probMax: number | null;
+  probNanCount: number;
+  noiseFloor: number | null;
+  autoThreshold: number | null;
+  baseThreshold: number | null;
+  thresholdScale: number | null;
+  startThreshold: number | null;
+  endThreshold: number | null;
+  speechRatio: number;
+  holdFrames: number;
+  usedFallbackRms: boolean;
+};
+
+export type VadAnalysisResult = {
+  frames: FrameData[];
+  debug?: VadWorkerDebug;
+};
 
 let worker: Worker | null = null;
 let workerFailed = false;
@@ -29,7 +51,7 @@ const errorListeners = new Set<(error: SileroVadError) => void>();
 
 const pending = new Map<
   number,
-  { resolve: (frames: FrameData[]) => void; reject: (error: Error) => void }
+  { resolve: (result: VadAnalysisResult) => void; reject: (error: Error) => void }
 >();
 
 const setVadStatus = (nextStatus: SileroVadStatus) => {
@@ -83,7 +105,7 @@ const ensureWorker = () => {
   if (worker || workerFailed) return;
   worker = new Worker(new URL('./sileroVadWorker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (event) => {
-    const { id, frames, error } = event.data as VadWorkerResponse;
+    const { id, frames, error, debug } = event.data as VadWorkerResponse;
     const entry = pending.get(id);
     if (!entry) return;
     pending.delete(id);
@@ -101,7 +123,7 @@ const ensureWorker = () => {
       return;
     }
 
-    entry.resolve(frames);
+    entry.resolve({ frames, debug });
   };
   worker.onerror = (event) => {
     const err = new Error(event.message || 'VADワーカーでエラーが発生しました。');
@@ -113,10 +135,10 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
   audioBuffer: AudioBuffer,
   fps: number,
   tuning: VadTuning
-): Promise<FrameData[]> => {
+): Promise<VadAnalysisResult> => {
   if (workerFailed) {
     setVadStatus('fallback');
-    return analyzeAudioBufferWithVad(audioBuffer, fps, tuning);
+    return { frames: analyzeAudioBufferWithVad(audioBuffer, fps, tuning) };
   }
 
   try {
@@ -131,7 +153,7 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
     const id = requestId + 1;
     requestId = id;
 
-    const frames = await new Promise<FrameData[]>((resolve, reject) => {
+    const { frames, debug } = await new Promise<VadAnalysisResult>((resolve, reject) => {
       pending.set(id, { resolve, reject });
       if (!worker) {
         pending.delete(id);
@@ -149,12 +171,16 @@ export const analyzeAudioBufferWithSileroVadEngine = async (
       worker.postMessage(payload, [samples.buffer]);
     });
 
-    setVadStatus('silero');
+    if (debug?.usedFallbackRms) {
+      setVadStatus('fallback');
+    } else {
+      setVadStatus('silero');
+    }
     setVadError(null);
-    return frames;
+    return { frames, debug };
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     failWorker(err);
-    return analyzeAudioBufferWithVad(audioBuffer, fps, tuning);
+    return { frames: analyzeAudioBufferWithVad(audioBuffer, fps, tuning) };
   }
 };

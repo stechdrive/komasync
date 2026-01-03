@@ -441,7 +441,62 @@ export default function App() {
     const requestId = (vadRequestIdRef.current.get(trackId) ?? 0) + 1;
     vadRequestIdRef.current.set(trackId, requestId);
     void analyzeAudioBufferWithSileroVadEngine(bufferRef, FPS, tuning)
-      .then((frames) => {
+      .then(({ frames, debug }) => {
+        if (import.meta.env.DEV) {
+          // VAD結果のデバッグ（開発時のみ）
+          const total = frames.length;
+          let speechCount = 0;
+          let maxVolume = 0;
+          let maxSpeechRun = 0;
+          let currentRun = 0;
+          frames.forEach((frame) => {
+            if (frame.volume > maxVolume) maxVolume = frame.volume;
+            if (frame.isSpeech) {
+              speechCount += 1;
+              currentRun += 1;
+              if (currentRun > maxSpeechRun) maxSpeechRun = currentRun;
+            } else {
+              currentRun = 0;
+            }
+          });
+          const ratio = total > 0 ? speechCount / total : 0;
+          const status = getSileroVadStatus();
+          console.info(
+            `[VAD] track=${trackId} total=${total} speech=${speechCount} ratio=${ratio.toFixed(3)} maxVol=${maxVolume.toFixed(5)} maxRun=${maxSpeechRun} status=${status}`
+          );
+          if (typeof window !== 'undefined') {
+            const debugTarget = window as Window & {
+              __vadDebug?: Record<
+                string,
+                {
+                  frames: FrameData[];
+                  summary: {
+                    total: number;
+                    speechCount: number;
+                    ratio: number;
+                    maxVolume: number;
+                    maxSpeechRun: number;
+                    status: string;
+                  };
+                  workerDebug?: unknown;
+                }
+              >;
+            };
+            if (!debugTarget.__vadDebug) debugTarget.__vadDebug = {};
+            debugTarget.__vadDebug[trackId] = {
+              frames,
+              summary: {
+                total,
+                speechCount,
+                ratio,
+                maxVolume,
+                maxSpeechRun,
+                status,
+              },
+              workerDebug: debug,
+            };
+          }
+        }
         if (vadReprocessIdRef.current !== tuningToken) return;
         if (vadRequestIdRef.current.get(trackId) !== requestId) return;
         setTracks((prev) =>
@@ -475,7 +530,7 @@ export default function App() {
         snapshot.map(async (track): Promise<VadAnalysisResult | null> => {
           if (!track.audioBuffer) return null;
           try {
-            const frames = await analyzeAudioBufferWithSileroVadEngine(track.audioBuffer, FPS, tuning);
+            const { frames } = await analyzeAudioBufferWithSileroVadEngine(track.audioBuffer, FPS, tuning);
             return { id: track.id, buffer: track.audioBuffer, frames };
           } catch (error) {
             console.warn('VAD解析に失敗しました。', error);
