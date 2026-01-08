@@ -120,7 +120,7 @@ const messages: I18nMessages = {
       close: '閉じる',
       overviewTitle: '概要',
       overviewBody:
-        'タイムシート上で再生・録音・編集を行うツールです。1列は3秒（72コマ）、2列で1シート（6秒 / 144コマ）です。',
+        'タイムシート上で再生・録音・編集を行うツールです。1列は3秒（72コマ）、2列で1シート（6秒 / 144コマ）です。録音/アップロードした音声はブラウザ内で処理され、外部サーバーには送信されません。',
       timesheetTitle: 'タイムシートの見方',
       timesheetItems: [
         '黄色の行が現在の再生ヘッドです。',
@@ -353,7 +353,7 @@ const messages: I18nMessages = {
       close: 'Close',
       overviewTitle: 'Overview',
       overviewBody:
-        'This tool lets you play, record, and edit on a timesheet. One column is 3 seconds (72 frames), and two columns make one sheet (6 seconds / 144 frames).',
+        'This tool lets you play, record, and edit on a timesheet. One column is 3 seconds (72 frames), and two columns make one sheet (6 seconds / 144 frames). Recorded/uploaded audio is processed locally in the browser and is not sent to external servers.',
       timesheetTitle: 'Reading the Timesheet',
       timesheetItems: [
         'The yellow row is the current playhead.',

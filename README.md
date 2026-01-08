@@ -34,6 +34,7 @@ Version: 1.6.4
 
 補足 / Notes:
 - マイク利用は「安全なオリジン」が必要です（GitHub Pages は `https`、ローカルは `localhost` 推奨）。 / EN: Microphone access requires a secure origin (GitHub Pages uses `https`, local is recommended on `localhost`).
+- 録音/アップロードした音声はブラウザ内で処理され、外部サーバーに送信されません。 / EN: Recorded/uploaded audio is processed locally in the browser and is not sent to external servers.
 
 ## ショートカット / Shortcuts
 
