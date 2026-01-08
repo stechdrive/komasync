@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { blobToAudioBuffer } from './services/audioProcessor';
 import {
   cutAudioRangeWithSilence,
@@ -43,6 +43,7 @@ import { FrameData, InputTestState, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
+import { createI18n, getInitialLanguage, setStoredLanguage, type Language } from './domain/i18n';
 
 const FPS = DEFAULT_FPS;
 const FRAMES_PER_COLUMN = getFramesPerColumn(FPS);
@@ -178,6 +179,8 @@ const areSelectionRangesEqual = (a: SelectionRange | null, b: SelectionRange | n
 
 export default function App() {
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
+  const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
+  const { t, list: tList } = useMemo(() => createI18n(language), [language]);
   
   // Multi-track State
   const [tracks, setTracks] = useState<Track[]>(createInitialTracks());
@@ -410,6 +413,10 @@ export default function App() {
   useEffect(() => {
     recordingStateRef.current = recordingState;
   }, [recordingState]);
+
+  useEffect(() => {
+    setStoredLanguage(language);
+  }, [language]);
 
   useEffect(() => {
     const node = gainNodeRef.current;
@@ -782,7 +789,7 @@ export default function App() {
   ]);
 
   const handleResetProject = () => {
-    if (window.confirm("プロジェクトを初期化します。\n録音データも含め、現在の作業内容はすべて失われます。\nよろしいですか？")) {
+    if (window.confirm(t('app.confirmReset'))) {
         // Stop playback/recording first
         stopAllSources();
         stopScrubSources();
@@ -814,7 +821,7 @@ export default function App() {
     try {
         await exportTracksToZip(tracks);
     } catch (error: unknown) {
-        const message = getErrorMessage(error) || "音声のエクスポートに失敗しました。";
+        const message = getErrorMessage(error) || t('app.exportAudioFailed');
         alert(message);
         console.error(error);
     }
@@ -825,7 +832,7 @@ export default function App() {
       const sheetIndex = Math.max(0, Math.floor(viewportFirstColumn / 2));
       await exportSheetImagesToZip(tracks, FPS, { type: 'sheet', sheetIndex });
     } catch (error: unknown) {
-      const message = getErrorMessage(error) || 'シート画像のエクスポートに失敗しました。';
+      const message = getErrorMessage(error) || t('app.exportSheetFailed');
       alert(message);
       console.error(error);
     }
@@ -835,7 +842,7 @@ export default function App() {
     try {
       await exportSheetImagesToZip(tracks, FPS, { type: 'all' });
     } catch (error: unknown) {
-      const message = getErrorMessage(error) || 'シート画像のエクスポートに失敗しました。';
+      const message = getErrorMessage(error) || t('app.exportSheetFailed');
       alert(message);
       console.error(error);
     }
@@ -1292,7 +1299,7 @@ export default function App() {
       const err = event.error ?? new Error('MediaRecorderでエラーが発生しました。');
       console.error('MediaRecorder error:', err);
       cleanupRecordingResources();
-      alert('録音中にエラーが発生しました。');
+      alert(t('app.recordingError'));
     };
 
     // Start Recording
@@ -1330,13 +1337,13 @@ export default function App() {
 
   const handleStartRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("お使いのブラウザは録音機能をサポートしていません。");
+      alert(t('app.browserNotSupported'));
       return;
     }
     if (inputTestAbortRef.current) {
       inputTestAbortRef.current.abort();
       inputTestAbortRef.current = null;
-      setInputTestState({ status: 'idle', progress: 0, message: 'レベルテストを中断しました。' });
+      setInputTestState({ status: 'idle', progress: 0, message: t('app.inputTestCanceled') });
     }
     if (recordingState === RecordingState.PLAYING) {
       handlePause();
@@ -1353,13 +1360,13 @@ export default function App() {
       const errorName = getErrorName(err);
       const errorMessage = getErrorMessage(err);
       if (errorName === 'NotFoundError' || errorMessage.includes('device not found')) {
-        alert("マイクが見つかりませんでした。マイクが接続されていることを確認してください。");
+        alert(t('app.micNotFound'));
       } else if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
-        alert("マイクの使用が許可されていません。ブラウザの設定を確認してください。");
+        alert(t('app.micNotAllowed'));
       } else if (errorName === 'NotReadableError') {
-        alert("マイクにアクセスできません。他のアプリが使用中の可能性があります。");
+        alert(t('app.micNotReadable'));
       } else {
-        alert("録音の開始に失敗しました。");
+        alert(t('app.startRecordingFailed'));
       }
     } finally {
       pendingRecordStartRef.current = false;
@@ -1430,9 +1437,9 @@ export default function App() {
       // More user friendly error
       const message = getErrorMessage(e);
       if (message.includes('Decode error')) {
-         alert("音声データのデコードに失敗しました。録音が短すぎるか、ブラウザが対応していない形式の可能性があります。");
+         alert(t('app.decodeAudioFailed'));
       } else {
-         alert("音声ファイルの読み込みに失敗しました。");
+         alert(t('app.loadAudioFailed'));
       }
       setRecordingState(RecordingState.IDLE);
     }
@@ -1567,7 +1574,7 @@ export default function App() {
       clearSelectionImmediate();
     } catch (error) {
       console.error('Cut failed:', error);
-      alert('切り取り操作に失敗しました。');
+      alert(t('app.cutFailed'));
     }
   }, [
     clearSelectionImmediate,
@@ -1580,6 +1587,7 @@ export default function App() {
     recordingState,
     saveToHistory,
     scheduleVadAnalysis,
+    t,
     tracks,
     vadPreset,
     vadStability,
@@ -1622,7 +1630,7 @@ export default function App() {
       commitCurrentFrame(range.startFrame);
     } catch (error) {
       console.error('Delete failed:', error);
-      alert('削除操作に失敗しました。');
+      alert(t('app.deleteFailed'));
     }
   };
 
@@ -1637,13 +1645,13 @@ export default function App() {
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
-          alert('全トラック貼り付けには、全トラックの切り取りクリップが必要です。');
+          alert(t('app.pasteAllTracksRequired'));
           return;
         }
 
         const missing = tracks.find((t) => !clipboardClip.byTrackId[t.id]);
         if (missing) {
-          alert('クリップデータが不足しています。もう一度切り取りしてください。');
+          alert(t('app.clipMissing'));
           return;
         }
 
@@ -1671,7 +1679,7 @@ export default function App() {
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
-          alert('対象トラックのクリップがありません。');
+          alert(t('app.trackClipMissing'));
           return;
         }
 
@@ -1702,7 +1710,7 @@ export default function App() {
       clearSelectionImmediate();
     } catch (error) {
       console.error('Paste insert failed:', error);
-      alert('貼り付け（挿入）に失敗しました。');
+      alert(t('app.pasteInsertFailed'));
     }
   }, [
     clipboardClip,
@@ -1714,6 +1722,7 @@ export default function App() {
     recordingState,
     saveToHistory,
     scheduleVadAnalysis,
+    t,
     tracks,
     vadPreset,
     vadStability,
@@ -1731,13 +1740,13 @@ export default function App() {
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
-          alert('全トラック貼り付けには、全トラックの切り取りクリップが必要です。');
+          alert(t('app.pasteAllTracksRequired'));
           return;
         }
 
         const missing = tracks.find((t) => !clipboardClip.byTrackId[t.id]);
         if (missing) {
-          alert('クリップデータが不足しています。もう一度切り取りしてください。');
+          alert(t('app.clipMissing'));
           return;
         }
 
@@ -1765,7 +1774,7 @@ export default function App() {
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
-          alert('対象トラックのクリップがありません。');
+          alert(t('app.trackClipMissing'));
           return;
         }
 
@@ -1796,7 +1805,7 @@ export default function App() {
       clearSelectionImmediate();
     } catch (error) {
       console.error('Paste overwrite failed:', error);
-      alert('貼り付け（上書き）に失敗しました。');
+      alert(t('app.pasteOverwriteFailed'));
     }
   }, [
     clipboardClip,
@@ -1808,6 +1817,7 @@ export default function App() {
     recordingState,
     saveToHistory,
     scheduleVadAnalysis,
+    t,
     tracks,
     vadPreset,
     vadStability,
@@ -1850,7 +1860,7 @@ export default function App() {
       commitCurrentFrame(currentFrameRef.current + 1);
     } catch (error) {
       console.error('Insert 1f failed:', error);
-      alert('+1f 挿入に失敗しました。');
+      alert(t('app.insertFrameFailed'));
     }
   };
 
@@ -1887,7 +1897,7 @@ export default function App() {
       commitCurrentFrame(Math.min(currentFrameRef.current, Math.max(0, nextMaxFrames - 1)));
     } catch (error) {
       console.error('Delete 1f failed:', error);
-      alert('-1f 削除に失敗しました。');
+      alert(t('app.deleteFrameFailed'));
     }
   };
 
@@ -2043,6 +2053,10 @@ export default function App() {
       setEditTarget('all');
     }
   };
+
+  const handleLanguageChange = useCallback((next: Language) => {
+    setLanguage(next);
+  }, []);
 
   const scheduleSelectionUpdate = useCallback(
     (range: SelectionRange | null) => {
@@ -2251,11 +2265,11 @@ export default function App() {
 
   const handleStartInputTest = useCallback(async () => {
     if (recordingState !== RecordingState.IDLE) {
-      alert('録音や再生中はレベルテストを開始できません。');
+      alert(t('app.inputTestRunningBlocked'));
       return;
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert('お使いのブラウザは録音機能をサポートしていません。');
+      alert(t('app.inputTestUnsupported'));
       return;
     }
 
@@ -2269,7 +2283,7 @@ export default function App() {
     setInputTestState({
       status: 'running',
       progress: 0,
-      message: 'テスト開始。1秒ほど待ってから普段の声量で話してください。',
+      message: t('app.inputTestStart'),
     });
 
     try {
@@ -2326,7 +2340,7 @@ export default function App() {
         inputTestAbortRef.current = null;
 
         if (rmsValues.length < 6) {
-          finishWithError('音声が検出できませんでした。もう一度テストしてください。');
+          finishWithError(t('app.inputTestNoAudio'));
           return;
         }
 
@@ -2337,7 +2351,7 @@ export default function App() {
         const speechRatio = speechFrames.length / rmsValues.length;
 
         if (speechRatio < INPUT_TEST_MIN_SPEECH_RATIO) {
-          finishWithError('声がほとんど検出できませんでした。普段の声量で話してみてください。');
+          finishWithError(t('app.inputTestLowSpeech'));
           return;
         }
 
@@ -2350,18 +2364,21 @@ export default function App() {
 
         setInputGainDb(appliedGainDb);
 
-        let message = `テスト完了。${appliedGainDb >= 0 ? '+' : ''}${appliedGainDb.toFixed(
-          1
-        )} dB を適用しました（ピーク ${peakDb.toFixed(1)} dBFS / 平均 ${rmsDb.toFixed(1)} dBFS）。`;
+        const gainLabel = `${appliedGainDb >= 0 ? '+' : ''}${appliedGainDb.toFixed(1)} dB`;
+        let message = t('app.inputTestComplete', {
+          gain: gainLabel,
+          peak: peakDb.toFixed(1),
+          rms: rmsDb.toFixed(1),
+        });
 
         if (recommendedGainDb > MAX_INPUT_GAIN_DB) {
-          message += ' 入力が小さいため、最大まで持ち上げています。';
+          message += t('app.inputTestGainMaxed');
         } else if (recommendedGainDb < MIN_INPUT_GAIN_DB) {
-          message += ' 入力が大きいため、最小まで下げています。';
+          message += t('app.inputTestGainMin');
         }
 
         if (clipped) {
-          message += ' 入力が飽和気味です。可能ならOS側の入力を下げてください。';
+          message += t('app.inputTestClipped');
         }
 
         setInputTestState({
@@ -2424,10 +2441,10 @@ export default function App() {
       setInputTestState({
         status: 'error',
         progress: 1,
-        message: message ? `テストに失敗しました: ${message}` : 'テストに失敗しました。',
+        message: message ? t('app.inputTestFailedWithMessage', { message }) : t('app.inputTestFailed'),
       });
     }
-  }, [ensureMicReady, recordingState]);
+  }, [ensureMicReady, recordingState, t]);
 
   const handleScrubStart = (frame: number) => {
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
@@ -2547,7 +2564,9 @@ export default function App() {
   const isZoomInDisabled = sheetZoom >= MAX_SHEET_ZOOM - 0.001;
 
   const targetLabel =
-    editTarget === 'all' ? '全トラック' : tracks.find((t) => t.id === editTarget)?.name ?? `Track ${editTarget}`;
+    editTarget === 'all'
+      ? t('app.targetAllTracks')
+      : tracks.find((t) => t.id === editTarget)?.name ?? t('app.trackFallback', { track: editTarget });
 
   const selectionRange = getNormalizedSelection();
   const selectionCount = selectionRange ? selectionRange.endFrame - selectionRange.startFrame + 1 : 0;
@@ -2560,6 +2579,7 @@ export default function App() {
           sheetNumber={sheetNumber}
           totalTimecode={totalTimecode}
           selectionTimecode={selectionTimecode}
+          t={t}
           isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
           isUndoDisabled={historyPast.length === 0}
           isRedoDisabled={historyFuture.length === 0}
@@ -2593,6 +2613,7 @@ export default function App() {
           isMicReady={isMicReady}
           isMicPreparing={isMicPreparing}
           isAllTracks={editTarget === 'all'}
+          t={t}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onDeleteOneFrame={() => void handleDeleteOneFrame()}
@@ -2611,6 +2632,7 @@ export default function App() {
         virtualMaxFrames={virtualMaxFrames}
         editTarget={editTarget}
         selection={selection}
+        t={t}
         fps={FPS}
         zoom={sheetZoom}
         minZoom={MIN_SHEET_ZOOM}
@@ -2638,6 +2660,7 @@ export default function App() {
         targetLabel={targetLabel}
         anchor={selectionMenu}
         hasClipboard={clipboardClip !== null}
+        t={t}
         onClose={() => setSelectionMenu(null)}
         onCut={() => {
           setSelectionMenu(null);
@@ -2683,6 +2706,8 @@ export default function App() {
         inputTestState={inputTestState}
         isInputTestBusy={inputTestState.status === 'running'}
         isInputConfigLocked={recordingState !== RecordingState.IDLE}
+        language={language}
+        t={t}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
         onExportAudio={() => void handleExportAudio()}
@@ -2692,6 +2717,7 @@ export default function App() {
         onStartInputTest={handleStartInputTest}
         onChangeInputGainDb={handleChangeInputGainDb}
         onToggleLimiter={handleToggleLimiter}
+        onChangeLanguage={handleLanguageChange}
         onChangeVadPreset={setVadPreset}
         onChangeVadStability={handleVadStabilityChange}
         onToggleVadAuto={handleToggleVadAuto}
@@ -2700,12 +2726,13 @@ export default function App() {
         onTogglePlayWhileRecording={() => setPlayWhileRecording((prev) => !prev)}
       />
 
-      <HelpSheet isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <HelpSheet isOpen={isHelpOpen} t={t} list={tList} onClose={() => setIsHelpOpen(false)} />
 
       <TrackMuteMenu
         isOpen={muteMenu !== null}
         position={muteMenu}
         tracks={tracks}
+        t={t}
         onToggleTrack={toggleTrackMute}
         onClose={handleCloseMuteMenu}
       />

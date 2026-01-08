@@ -1,11 +1,13 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Ban, RotateCcw, Scissors, Tag, Trash2, X } from 'lucide-react';
+import type { Translator } from '@/domain/i18n';
 
 type EditPaletteProps = {
   selectionCount: number;
   targetLabel: string;
   anchor: { x: number; y: number } | null;
   hasClipboard: boolean;
+  t: Translator;
   onCut: () => void;
   onDelete: () => void;
   onPasteInsert: () => void;
@@ -25,6 +27,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
   targetLabel,
   anchor,
   hasClipboard,
+  t,
   onCut,
   onDelete,
   onPasteInsert,
@@ -70,25 +73,27 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
         {showSelectionActions && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-lg">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[var(--ui-xs)] text-blue-700 font-bold">{selectionCount}コマ選択中</div>
+              <div className="text-[var(--ui-xs)] text-blue-700 font-bold">
+                {t('editPalette.selectionCount', { count: selectionCount })}
+              </div>
               <div className="flex items-center gap-2">
                 <div className="text-[var(--ui-xs)] text-blue-600">{targetLabel}</div>
                 <button
                   type="button"
                   onClick={onClose}
                   className="min-h-[var(--control-size)] px-2 text-[var(--ui-xs)] text-blue-600 hover:text-blue-800 flex items-center rounded-md"
-                  title="閉じる"
+                  title={t('editPalette.close')}
                 >
-                  閉じる
+                  {t('editPalette.close')}
                 </button>
                 <button
                   type="button"
                   onClick={onClearSelection}
                   className="min-h-[var(--control-size)] px-2 text-[var(--ui-xs)] text-blue-700 hover:text-blue-900 flex items-center gap-1 rounded-md"
-                  title="選択解除"
+                  title={t('editPalette.clearSelection')}
                 >
                   <X className="w-3 h-3" />
-                  解除
+                  {t('editPalette.clearSelection')}
                 </button>
               </div>
             </div>
@@ -99,61 +104,61 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
                 onClick={onCut}
                 className="min-h-[var(--control-size)] flex items-center justify-center gap-2 bg-white hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-lg border border-blue-100 text-[var(--ui-sm)] font-bold shadow-sm"
               >
-                <Scissors className="w-4 h-4" /> 切り取り
+                <Scissors className="w-4 h-4" /> {t('editPalette.cut')}
               </button>
               <button
                 type="button"
                 onClick={onDelete}
                 className="min-h-[var(--control-size)] flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2 rounded-lg border border-red-200 text-[var(--ui-sm)] font-bold shadow-sm"
               >
-                <Trash2 className="w-4 h-4" /> 削除
+                <Trash2 className="w-4 h-4" /> {t('editPalette.delete')}
               </button>
             </div>
 
             <div className="mt-3 space-y-2">
-              <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">セリフラベル</div>
+              <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">{t('editPalette.speechLabel')}</div>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={onMarkSpeech}
                   className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-2 rounded-lg text-[var(--ui-xs)] font-bold shadow-sm"
                 >
-                  <Tag className="w-3.5 h-3.5" /> セリフ
+                  <Tag className="w-3.5 h-3.5" /> {t('editPalette.speech')}
                 </button>
                 <button
                   type="button"
                   onClick={onMarkNonSpeech}
                   className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-2 rounded-lg text-[var(--ui-xs)] font-bold"
                 >
-                  <Ban className="w-3.5 h-3.5" /> 解除
+                  <Ban className="w-3.5 h-3.5" /> {t('editPalette.nonSpeech')}
                 </button>
                 <button
                   type="button"
                   onClick={onResetSpeechLabel}
                   className="min-h-[var(--control-size)] flex items-center justify-center gap-1 bg-white hover:bg-blue-50 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> 自動
+                  <RotateCcw className="w-3.5 h-3.5" /> {t('editPalette.auto')}
                 </button>
               </div>
             </div>
 
             {hasClipboard && (
               <div className="mt-3 space-y-2">
-                <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">クリップボード</div>
+                <div className="text-[var(--ui-xs)] text-blue-600 font-semibold">{t('editPalette.clipboard')}</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={onPasteInsert}
                     className="min-h-[var(--control-size)] flex items-center justify-center bg-white hover:bg-blue-100 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold shadow-sm"
                   >
-                    貼り付け（挿入）
+                    {t('editPalette.pasteInsert')}
                   </button>
                   <button
                     type="button"
                     onClick={onPasteOverwrite}
                     className="min-h-[var(--control-size)] flex items-center justify-center bg-white hover:bg-blue-100 text-blue-700 px-2 py-2 rounded-lg border border-blue-100 text-[var(--ui-xs)] font-bold shadow-sm"
                   >
-                    貼り付け（上書き）
+                    {t('editPalette.pasteOverwrite')}
                   </button>
                 </div>
                 <button
@@ -161,7 +166,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({
                   onClick={onClearClipboard}
                   className="min-h-[var(--control-size)] w-full flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 px-2 py-2 rounded-lg border border-red-200 text-[var(--ui-xs)] font-bold"
                 >
-                  クリップボードを消去
+                  {t('editPalette.clearClipboard')}
                 </button>
               </div>
             )}
