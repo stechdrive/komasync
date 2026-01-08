@@ -41,29 +41,6 @@
 - `Ctrl/Cmd + V`: Paste（`Shift` で上書き）
 - `↑/↓`: スクラブ移動
 
-## 開発（ローカル）
-
-前提: Node.js
-
-- 依存関係のインストール: `npm install`
-- 開発サーバ起動: `npm run develop`（`http://localhost:3000`）
-- 本番ビルド: `npm run build`
-- ビルドの確認: `npm run preview`
-
-## GitHub Pages へのデプロイ
-
-このリポジトリの公開URL: `https://stechdrive.github.io/komasync/`
-
-- デプロイ: `npm run deploy`
-  - `dist/` を `gh-pages` ブランチへ発行します
-  - GitHub の Settings → Pages で `gh-pages` ブランチ（`/`）を選択してください
-
-※ フォーク/リポ名変更時はベースパスを上書きしてください: `VITE_BASE=/your-repo/ npm run deploy`
-
-## コントリビュート
-
-- コミットメッセージは英語の Conventional Commits（例: `feat: ...`, `fix: ...`）を使用してください。
-
 ## ライセンス
 
 MIT License（`LICENSE` を参照）
