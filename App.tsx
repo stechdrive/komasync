@@ -2124,6 +2124,30 @@ export default function App() {
     [editTarget, flushSelectionUpdates, getNormalizedSelection, saveToHistory, tracks]
   );
 
+  const applySpeechOverrideToSelectionAndAdvance = useCallback(
+    (value: number): boolean => {
+      flushSelectionUpdates();
+      const range = getNormalizedSelection();
+      if (!range) return false;
+      applySpeechOverrideToSelection(value);
+      clearSelectionImmediate();
+      const endFrame = Math.max(0, maxFrames - 1);
+      const nextFrame = Math.min(range.endFrame + 1, endFrame);
+      commitCurrentFrame(nextFrame);
+      startScrubState(SCRUB_STATE_RESET_MS);
+      return true;
+    },
+    [
+      applySpeechOverrideToSelection,
+      clearSelectionImmediate,
+      commitCurrentFrame,
+      flushSelectionUpdates,
+      getNormalizedSelection,
+      maxFrames,
+      startScrubState,
+    ]
+  );
+
   const applySpeechOverrideToFrame = useCallback(
     (frame: number, value: number) => {
       if (
@@ -2176,14 +2200,30 @@ export default function App() {
   }, [applySpeechOverrideToSelection]);
 
   const handleMarkSpeechFrame = useCallback(() => {
+    if (
+      recordingState === RecordingState.RECORDING ||
+      recordingState === RecordingState.PROCESSING ||
+      recordingState === RecordingState.PLAYING
+    ) {
+      return;
+    }
+    if (applySpeechOverrideToSelectionAndAdvance(1)) return;
     applySpeechOverrideToFrame(currentFrameRef.current, 1);
     stepFrameAfterLabel();
-  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
+  }, [applySpeechOverrideToFrame, applySpeechOverrideToSelectionAndAdvance, recordingState, stepFrameAfterLabel]);
 
   const handleMarkNonSpeechFrame = useCallback(() => {
+    if (
+      recordingState === RecordingState.RECORDING ||
+      recordingState === RecordingState.PROCESSING ||
+      recordingState === RecordingState.PLAYING
+    ) {
+      return;
+    }
+    if (applySpeechOverrideToSelectionAndAdvance(-1)) return;
     applySpeechOverrideToFrame(currentFrameRef.current, -1);
     stepFrameAfterLabel();
-  }, [applySpeechOverrideToFrame, stepFrameAfterLabel]);
+  }, [applySpeechOverrideToFrame, applySpeechOverrideToSelectionAndAdvance, recordingState, stepFrameAfterLabel]);
 
   const handleZoomIn = useCallback(() => {
     setSheetZoom((prev) => normalizeSheetZoom(prev + SHEET_ZOOM_STEP));
