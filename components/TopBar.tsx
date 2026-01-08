@@ -3,11 +3,13 @@ import { HelpCircle, MoreHorizontal, Redo2, RefreshCw, Scan, Undo2, Volume2, Vol
 import { APP_NAME } from '@/domain/appMeta';
 import { useLongPressTooltip } from '@/hooks/useLongPressTooltip';
 import { LongPressTooltip } from '@/components/LongPressTooltip';
+import type { Translator } from '@/domain/i18n';
 
 type TopBarProps = {
   sheetNumber: number;
   totalTimecode: string;
   selectionTimecode?: string;
+  t: Translator;
   isResetDisabled: boolean;
   isUndoDisabled: boolean;
   isRedoDisabled: boolean;
@@ -29,6 +31,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   sheetNumber,
   totalTimecode,
   selectionTimecode,
+  t,
   isResetDisabled,
   isUndoDisabled,
   isRedoDisabled,
@@ -48,6 +51,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   const hasMuted = mutedCount > 0;
   const { tooltip, getTooltipProps } = useLongPressTooltip();
   const tooltipProps = getTooltipProps({ placement: 'bottom' });
+  const sheetLabel = t('topBar.sheetLabel', { sheetNumber });
+  const selectionSuffix = selectionTimecode ? t('topBar.selectionSuffix', { selection: selectionTimecode }) : '';
 
   return (
     <div className="safe-area-top topbar-compact h-full bg-indigo-600 text-white border-b border-indigo-700/40">
@@ -63,7 +68,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 ? 'opacity-40 border-white/20'
                 : 'bg-indigo-700/40 hover:bg-indigo-700 border-white/20'
             }`}
-            title="リセット"
+            title={t('topBar.resetTitle')}
           >
             <RefreshCw className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
@@ -71,11 +76,11 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="min-w-0 flex flex-col gap-0.5 leading-tight">
             <div className="min-w-0 flex items-baseline gap-2">
               <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
-              <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">シート {sheetNumber}</div>
+              <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">{sheetLabel}</div>
             </div>
             <div className="font-mono text-[var(--ui-xs)] sm:text-[var(--ui-sm)] truncate min-w-0">
               {totalTimecode}
-              {selectionTimecode ? ` / 選 ${selectionTimecode}` : ''}
+              {selectionSuffix}
             </div>
           </div>
         </div>
@@ -88,7 +93,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               disabled={isZoomOutDisabled}
               {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
-              title="ズームアウト（100%まで）"
+              title={t('topBar.zoomOutTitle')}
             >
               <ZoomOut className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
@@ -97,8 +102,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               onClick={onZoomReset}
               {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
-              title="全体表示"
-              aria-label="全体表示"
+              title={t('topBar.zoomResetTitle')}
+              aria-label={t('topBar.zoomResetAria')}
             >
               <Scan className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
@@ -108,7 +113,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               disabled={isZoomInDisabled}
               {...tooltipProps}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
-              title="ズームイン"
+              title={t('topBar.zoomInTitle')}
             >
               <ZoomIn className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
@@ -119,7 +124,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             disabled={isUndoDisabled}
             {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
-            title="Undo"
+            title={t('topBar.undoTitle')}
           >
             <Undo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
@@ -129,7 +134,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             disabled={isRedoDisabled}
             {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
-            title="Redo"
+            title={t('topBar.redoTitle')}
           >
             <Redo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
@@ -143,7 +148,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             className={`w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
               hasMuted ? 'text-amber-100' : ''
             }`}
-            title="ミュート"
+            title={t('topBar.muteTitle')}
           >
             {hasMuted ? (
               <VolumeX className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -156,7 +161,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={onOpenHelp}
             {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
-            title="ヘルプ"
+            title={t('topBar.helpTitle')}
           >
             <HelpCircle className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>
@@ -165,7 +170,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={onOpenMore}
             {...tooltipProps}
             className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
-            title="その他"
+            title={t('topBar.moreTitle')}
           >
             <MoreHorizontal className="w-[var(--control-icon)] h-[var(--control-icon)]" />
           </button>

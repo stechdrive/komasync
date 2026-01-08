@@ -3,6 +3,7 @@ import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
 import { EditTarget, SelectionRange } from '@/domain/editTypes';
+import type { Translator } from '@/domain/i18n';
 
 type TimesheetViewportProps = {
   tracks: Track[];
@@ -10,6 +11,7 @@ type TimesheetViewportProps = {
   virtualMaxFrames: number;
   editTarget: EditTarget;
   selection: SelectionRange | null;
+  t: Translator;
   fps: number;
   zoom: number;
   minZoom: number;
@@ -47,6 +49,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   virtualMaxFrames: virtualMaxFramesProp,
   editTarget,
   selection,
+  t,
   fps,
   zoom,
   minZoom,
@@ -1666,12 +1669,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       </div>
       {wrapCue === 'up' && (
         <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
-          ↑ 続き
+          {t('timesheet.wrapUp')}
         </div>
       )}
       {wrapCue === 'down' && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
-          ↓ 続き
+          {t('timesheet.wrapDown')}
         </div>
       )}
     </div>

@@ -1,12 +1,15 @@
 import React from 'react';
 import { HelpCircle, X } from 'lucide-react';
+import type { ListTranslator, Translator } from '@/domain/i18n';
 
 type HelpSheetProps = {
   isOpen: boolean;
+  t: Translator;
+  list: ListTranslator;
   onClose: () => void;
 };
 
-export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
+export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, t, list, onClose }) => {
   if (!isOpen) return null;
 
   return (
@@ -18,13 +21,13 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
             <div className="font-bold text-[var(--ui-sm)] text-gray-800 flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-indigo-600" />
-              ヘルプ
+              {t('help.title')}
             </div>
             <button
               type="button"
               onClick={onClose}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-gray-100"
-              title="閉じる"
+              title={t('help.close')}
             >
               <X className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
@@ -32,111 +35,79 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
 
           <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-5 text-[var(--ui-sm)] text-gray-700">
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">概要</div>
-              <p>
-                タイムシート上で再生・録音・編集を行うツールです。1列は3秒（72コマ）、2列で1シート（6秒 /
-                144コマ）です。
-              </p>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.overviewTitle')}</div>
+              <p>{t('help.overviewBody')}</p>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">タイムシートの見方</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.timesheetTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>黄色の行が現在の再生ヘッドです。</li>
-                <li>左ルーラーはシート内のコマ数、右ルーラーは総時間の「秒+コマ」です。</li>
-                <li>右ルーラーは「0+01」開始で、0+24→1+00のように秒が繰り上がります。</li>
-                <li>右ルーラーは表示可能な行すべてに表示します。</li>
-                <li>線の強さは「1秒」＞「0.5秒」＞「6コマ」の順です。</li>
-                <li>セリフラベルは全幅表示で、連続区間は枠で強調されます。</li>
-                <li>波形は縦方向に連続表示されます（トラック内で正規化）。</li>
-                <li>選択範囲は点線の枠で表示されます。</li>
+                {list('help.timesheetItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">ズーム</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.zoomTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>上部バーのズームイン/ズームアウト/全体表示で調整します。</li>
-                <li>スマホはピンチ操作でもシートを拡大できます。</li>
-                <li>ズーム中のスクロールは2本指で行います。</li>
-                <li>全体表示は100%の基準表示です。</li>
+                {list('help.zoomItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">再生と録音</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.playbackTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>再生ボタンで現在位置から再生します。</li>
-                <li>スクラブ再生は、再生ヘッドを動かしながら1コマごとの音を断片的に再生する操作です。</li>
-                <li>ルーラーやプレイヘッドをドラッグするとスクラブ再生できます。</li>
-                <li>録音ボタンで録音開始、停止で終了します。</li>
-                <li>録音は現在の再生ヘッド位置から始まります。</li>
-                <li>準備中…表示の後に録音が開始します。</li>
-                <li>録音トラックはタイムシート上のセルをタップして選択します。</li>
-                <li>「その他」→「セリフ検出」で自動調整や感度/途切れにくさ/環境を調整できます。</li>
-                <li>「その他」から録音中の再生ON/OFFを切り替えられます。</li>
+                {list('help.playbackItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">入力レベル最適化</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.inputOptimizeTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>「その他」→「入力最適化」からレベルテスト/録音ゲイン/リミッターを調整できます。</li>
-                <li>レベルテストは開始後1秒ほど待ってから、普段の声量で3〜4秒話してください。</li>
-                <li>しゃべりが検出できない場合はエラーになり、再テストを促します。</li>
-                <li>テスト結果に合わせて録音ゲインが自動適用され、スライダーで微調整できます。</li>
-                <li>リミッターはピークを軽く抑えて歪みを減らします（元がクリップしている音は完全には戻りません）。</li>
-                <li>録音/再生中はテストやリミッター設定を変更できません。</li>
+                {list('help.inputOptimizeItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">編集</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.editTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>PCはドラッグ、スマホはタップしたままドラッグで範囲選択します。</li>
-                <li>スマホはタップで1コマ選択できます。</li>
-                <li>選択範囲は「切り取り」「削除」が可能です。</li>
-                <li>選択範囲がある場合、「話」「無」でその範囲に一括適用し、選択解除後に次のコマへ移動します。</li>
-                <li>選択メニューのセリフラベルで「セリフ/解除/自動」を切り替えられます。</li>
-                <li>自動検出されたセリフの位置が違うとき、波形を見ながらスクラブ再生してラベルを貼り直せます。</li>
-                <li>手動ラベルは自動判定より優先され、編集でも追従します。</li>
-                <li>選択範囲で右クリック/長押しすると編集メニューを開けます。</li>
-                <li>クリップボードがあると貼り付け（挿入/上書き）や消去を選べます。</li>
-                <li>下部の「話」「無」で現在の1コマにセリフ/非セリフのラベルを付けられます。</li>
-                <li>「話」「無」を押すと次のコマへ移動します（再生/録音中は不可）。</li>
-                <li>+1fボタンで無音フレームを挿入します。</li>
-                <li>-1fボタンで現在の行を削除して詰めます。</li>
+                {list('help.editItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">インポート / 書き出し</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.exportTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>「その他」から音声ファイルをトラックへ読み込めます。</li>
-                <li>トラック別WAVのZIPや、シート画像を書き出せます。</li>
-                <li>WAVは最長トラックに合わせて無音が入ります。</li>
+                {list('help.exportItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">ショートカット</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.shortcutsTitle')}</div>
               <ul className="list-disc ml-4 space-y-1 font-mono text-[var(--ui-xs)]">
-                <li>Undo: Ctrl/Cmd + Z</li>
-                <li>Redo: Ctrl/Cmd + Y / Shift + Ctrl/Cmd + Z</li>
-                <li>Cut: Ctrl/Cmd + X</li>
-                <li>Paste: Ctrl/Cmd + V（Shiftで上書き）</li>
-                <li>Scrub: ↑ / ↓</li>
+                {list('help.shortcutsItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
 
             <section className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">操作のコツ</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('help.tipsTitle')}</div>
               <ul className="list-disc ml-4 space-y-1">
-                <li>ルーラーやトラックをタップすると再生ヘッドを移動できます。</li>
-                <li>プレイヘッド（黄色の行）をドラッグするとスクラブ再生できます。</li>
-                <li>上部のスピーカーアイコンからトラックをミュートできます。</li>
-                <li>全トラック操作は下部の「全」ボタンで切り替えます。</li>
-                <li>横スクロールでシートを移動できます。</li>
+                {list('help.tipsItems').map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </section>
           </div>

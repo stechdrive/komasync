@@ -3,6 +3,7 @@ import { Mic, Minus, Pause, Play, Plus, StopCircle } from 'lucide-react';
 import { RecordingState } from '@/types';
 import { useLongPressTooltip } from '@/hooks/useLongPressTooltip';
 import { LongPressTooltip } from '@/components/LongPressTooltip';
+import type { Translator } from '@/domain/i18n';
 
 type TransportDockProps = {
   recordingState: RecordingState;
@@ -11,6 +12,7 @@ type TransportDockProps = {
   isMicReady: boolean;
   isMicPreparing: boolean;
   isAllTracks: boolean;
+  t: Translator;
   onToggleAllTracks: () => void;
   onInsertOneFrame: () => void;
   onDeleteOneFrame: () => void;
@@ -29,6 +31,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   isMicReady,
   isMicPreparing,
   isAllTracks,
+  t,
   onToggleAllTracks,
   onInsertOneFrame,
   onDeleteOneFrame,
@@ -56,6 +59,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
         : 'bg-gray-300';
   const { tooltip, getTooltipProps } = useLongPressTooltip();
   const tooltipProps = getTooltipProps({ placement: 'top' });
+  const recordIndicator = t('transport.recordTrackIndicator', { track: recordTrackId });
 
   return (
     <div className="safe-area-bottom bg-white border-t border-gray-200">
@@ -80,11 +84,17 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           )}
           <div className="flex flex-col items-start leading-none">
             <div className="text-[var(--ui-sm)]">
-              {isRecording ? '停止' : isPreparing ? '準備中…' : isBusy ? '処理中…' : '録音'}
+              {isRecording
+                ? t('transport.recordStop')
+                : isPreparing
+                  ? t('transport.recordPreparing')
+                  : isBusy
+                    ? t('transport.recordProcessing')
+                    : t('transport.recordStart')}
             </div>
             <div className="text-[var(--ui-xs)] text-gray-500 font-mono mt-0.5 flex items-center gap-1">
               <span className={`inline-block w-2 h-2 rounded-full ${micDotClass}`} />
-              REC T{recordTrackId}
+              {recordIndicator}
             </div>
           </div>
         </button>
@@ -97,7 +107,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           className={`w-[calc(var(--control-size)*1.8)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors ${
             canPlayToggle ? 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700' : 'opacity-50 border-gray-200'
           }`}
-          title={isPlaying ? '一時停止' : '再生'}
+          title={isPlaying ? t('transport.pauseTitle') : t('transport.playTitle')}
         >
           {isPlaying ? (
             <Pause className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -113,9 +123,9 @@ export const TransportDock: React.FC<TransportDockProps> = ({
           className={`w-[var(--control-size)] h-[var(--control-size)] rounded-xl border flex items-center justify-center transition-colors font-bold ${
             isAllTracks ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-200 text-gray-500 hover:bg-gray-100'
           }`}
-          title="全トラック"
+          title={t('transport.allTracksTitle')}
         >
-          全
+          {t('transport.allTracksLabel')}
         </button>
 
         <button
@@ -128,9 +138,9 @@ export const TransportDock: React.FC<TransportDockProps> = ({
               ? 'border-gray-200 text-emerald-600 hover:border-indigo-400 hover:bg-indigo-50'
               : 'opacity-50 border-gray-200'
           }`}
-          title="1コマをセリフとしてラベル"
+          title={t('transport.markSpeechTitle')}
         >
-          話
+          {t('transport.markSpeechLabel')}
         </button>
 
         <button
@@ -143,9 +153,9 @@ export const TransportDock: React.FC<TransportDockProps> = ({
               ? 'border-gray-200 text-gray-500 hover:border-indigo-400 hover:bg-indigo-50'
               : 'opacity-50 border-gray-200'
           }`}
-          title="1コマを非セリフとして除外"
+          title={t('transport.markNonSpeechTitle')}
         >
-          無
+          {t('transport.markNonSpeechLabel')}
         </button>
 
         <button
@@ -158,7 +168,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
               ? 'opacity-50 border-gray-200'
               : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
           }`}
-          title="-1f（削除）"
+          title={t('transport.deleteFrameTitle')}
         >
           <Minus className="w-[var(--control-icon)] h-[var(--control-icon)]" />
         </button>
@@ -173,7 +183,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
               ? 'opacity-50 border-gray-200'
               : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
           }`}
-          title="+1f（無音挿入）"
+          title={t('transport.insertFrameTitle')}
         >
           <Plus className="w-[var(--control-icon)] h-[var(--control-icon)]" />
         </button>

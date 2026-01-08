@@ -2,11 +2,13 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { Track } from '@/types';
 import { getTrackTheme } from '@/domain/trackTheme';
+import type { Translator } from '@/domain/i18n';
 
 type TrackMuteMenuProps = {
   isOpen: boolean;
   position: { x: number; y: number } | null;
   tracks: Track[];
+  t: Translator;
   onToggleTrack: (trackId: string) => void;
   onClose: () => void;
 };
@@ -17,6 +19,7 @@ export const TrackMuteMenu: React.FC<TrackMuteMenuProps> = ({
   isOpen,
   position,
   tracks,
+  t,
   onToggleTrack,
   onClose,
 }) => {
@@ -50,7 +53,7 @@ export const TrackMuteMenu: React.FC<TrackMuteMenuProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2 text-[var(--ui-xs)] font-bold text-gray-500 border-b border-gray-100">
-          ミュート
+          {t('trackMute.title')}
         </div>
 
         <div className="p-2 space-y-1 overflow-y-auto min-h-0">

@@ -5,6 +5,7 @@ import { VuMeter } from '@/components/VuMeter';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 import { getVadTuning, VadPreset } from '@/services/vad';
 import type { SileroVadError, SileroVadStatus } from '@/services/sileroVadEngine';
+import type { Translator } from '@/domain/i18n';
 
 type MoreSheetProps = {
   isOpen: boolean;
@@ -22,6 +23,7 @@ type MoreSheetProps = {
   inputTestState: InputTestState;
   isInputTestBusy: boolean;
   isInputConfigLocked: boolean;
+  t: Translator;
   playWhileRecording: boolean;
   onClose: () => void;
   onExportAudio: () => void;
@@ -98,6 +100,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   inputTestState,
   isInputTestBusy,
   isInputConfigLocked,
+  t,
   playWhileRecording,
   onClose,
   onExportAudio,
@@ -141,14 +144,18 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
 
   if (!isOpen) return null;
 
-  const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? `Track ${recordTrackId}`;
+  const activeTrackName = tracks.find((t) => t.id === recordTrackId)?.name ?? t('app.trackFallback', { track: recordTrackId });
   const vadTuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
   const stabilityPercent = Math.round(vadStability * 100);
   const thresholdPercent = Math.round(vadThresholdScale * 100);
   const isSileroActive = vadEngineStatus === 'silero';
   const thresholdValueClass = isSileroActive ? 'text-blue-600' : 'text-gray-600';
   const vadEngineLabel =
-    vadEngineStatus === 'silero' ? 'Silero' : vadEngineStatus === 'fallback' ? 'Fallback' : '未判定';
+    vadEngineStatus === 'silero'
+      ? t('more.vadEngineSilero')
+      : vadEngineStatus === 'fallback'
+        ? t('more.vadEngineFallback')
+        : t('more.vadEngineUnknown');
   const vadEngineClass =
     vadEngineStatus === 'silero'
       ? 'text-blue-600'
@@ -163,9 +170,10 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   const serviceWorkerControlled =
     typeof navigator !== 'undefined' && 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
   const diagValueClass = (value: boolean): string => (value ? 'text-blue-600' : 'text-gray-500');
-  const autoCaption = isVadAuto
-    ? '6コマ以上の録音があると自動で最適化'
-    : '手動で感度と途切れにくさを調整できます';
+  const diagOk = t('more.diagOk');
+  const diagNg = t('more.diagNg');
+  const diagStatus = (value: boolean): string => (value ? diagOk : diagNg);
+  const autoCaption = isVadAuto ? t('more.vadAutoCaptionOn') : t('more.vadAutoCaptionOff');
   const gainLabel = formatDb(inputGainDb, 1);
   const testProgress = Math.min(1, Math.max(0, inputTestState.progress));
   const testStatusClass =
@@ -182,12 +190,12 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
       <div className="absolute inset-x-0 bottom-0 safe-area-bottom">
         <div className="bg-white rounded-t-2xl shadow-xl border-t border-gray-200 max-h-[calc(var(--app-height)-var(--topbar-h)-var(--dock-h))] overflow-hidden flex flex-col">
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-            <div className="font-bold text-[var(--ui-sm)] text-gray-800">その他</div>
+            <div className="font-bold text-[var(--ui-sm)] text-gray-800">{t('more.title')}</div>
             <button
               type="button"
               onClick={onClose}
               className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-gray-100"
-              title="閉じる"
+              title={t('more.close')}
             >
               <X className="w-[var(--control-icon)] h-[var(--control-icon)]" />
             </button>
@@ -195,14 +203,14 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
 
           <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-4 text-[var(--ui-sm)] text-gray-700">
             <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">書き出し</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.exportSection')}</div>
               <button
                 type="button"
                 onClick={onExportAudio}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
               >
                 <FileAudio className="w-5 h-5" />
-                トラック別WAVをZIPでダウンロード
+                {t('more.exportAudio')}
               </button>
 
               <div className="grid grid-cols-2 gap-2">
@@ -212,7 +220,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                   className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
                 >
                   <ImageDown className="w-5 h-5" />
-                  表示中
+                  {t('more.exportCurrent')}
                 </button>
                 <button
                   type="button"
@@ -220,26 +228,24 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                   className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
                 >
                   <ImageDown className="w-5 h-5" />
-                  全シート
+                  {t('more.exportAll')}
                 </button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">アップロード</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.uploadSection')}</div>
               <label className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 cursor-pointer">
                 <Upload className="w-5 h-5" />
-                {activeTrackName} に音声を読み込む
+                {t('more.uploadLabel', { track: activeTrackName })}
                 <input type="file" accept="audio/*" onChange={onFileUpload} className="hidden" />
               </label>
             </div>
 
             <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">入力最適化</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.inputOptimizeSection')}</div>
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3">
-                <div className="text-[var(--ui-xs)] text-gray-600">
-                  テスト開始後、1秒ほど待ってから普段の声量で3〜4秒話してください。結果に合わせて録音ゲインを自動調整します。
-                </div>
+                <div className="text-[var(--ui-xs)] text-gray-600">{t('more.inputOptimizeDescription')}</div>
 
                 <button
                   type="button"
@@ -248,7 +254,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                   className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 disabled:opacity-60 disabled:cursor-default"
                 >
                   <Mic className="w-5 h-5" />
-                  {isInputTestBusy ? '計測中…' : 'レベルテストを開始'}
+                  {isInputTestBusy ? t('more.inputTestRunning') : t('more.inputTestStart')}
                 </button>
 
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
@@ -264,13 +270,15 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
 
                 {inputTestState.status === 'success' && (
                   <div className="text-[var(--ui-xs)] text-gray-500">
-                    推奨 {formatDb(inputTestState.recommendedGainDb ?? inputGainDb, 1)} / 適用{' '}
-                    {formatDb(inputTestState.appliedGainDb ?? inputGainDb, 1)}
+                    {t('more.inputTestResult', {
+                      recommended: formatDb(inputTestState.recommendedGainDb ?? inputGainDb, 1),
+                      applied: formatDb(inputTestState.appliedGainDb ?? inputGainDb, 1),
+                    })}
                   </div>
                 )}
 
                 <div className="text-[var(--ui-xs)] text-gray-600">
-                  録音ゲイン
+                  {t('more.inputGainLabel')}
                   <div className="mt-1 flex items-center gap-2">
                     <input
                       type="range"
@@ -280,21 +288,21 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                       value={Math.round(inputGainDb)}
                       onChange={(e) => onChangeInputGainDb(parseInt(e.target.value, 10))}
                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      aria-label="録音ゲイン"
+                      aria-label={t('more.inputGainLabel')}
                     />
                     <div className="w-14 text-right font-mono text-[var(--ui-xs)] text-gray-600">{gainLabel}</div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="text-[var(--ui-xs)] text-gray-600">リミッター</div>
+                  <div className="text-[var(--ui-xs)] text-gray-600">{t('more.limiterLabel')}</div>
                   <button
                     type="button"
                     onClick={() => onToggleLimiter(!isLimiterEnabled)}
                     className="w-[var(--control-size)] h-[var(--control-size)] flex items-center justify-center"
                     disabled={isInputConfigLocked}
                     aria-pressed={isLimiterEnabled}
-                    aria-label="リミッターの切り替え"
+                    aria-label={t('more.limiterAria')}
                   >
                     <div
                       className={`relative w-10 h-6 rounded-full transition-colors ${
@@ -310,26 +318,26 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                   </button>
                 </div>
                 <div className="text-[var(--ui-xs)] text-gray-500">
-                  クリップに近い入力を軽く抑えて歪みを減らします（元がクリップしている場合は完全には復元できません）。
+                  {t('more.limiterHelp')}
                 </div>
                 {isInputConfigLocked && (
-                  <div className="text-[var(--ui-xs)] text-gray-500">録音/再生中はリミッター設定を変更できません。</div>
+                  <div className="text-[var(--ui-xs)] text-gray-500">{t('more.limiterLocked')}</div>
                 )}
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">セリフ検出</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.vadSection')}</div>
 
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-[var(--ui-sm)] text-gray-700">自動調整</div>
+                  <div className="text-[var(--ui-sm)] text-gray-700">{t('more.vadAuto')}</div>
                   <button
                     type="button"
                     onClick={() => onToggleVadAuto(!isVadAuto)}
                     className="w-[var(--control-size)] h-[var(--control-size)] flex items-center justify-center"
                     aria-pressed={isVadAuto}
-                    aria-label="セリフ検出の自動調整"
+                    aria-label={t('more.vadAutoAria')}
                   >
                     <div
                       className={`relative w-10 h-6 rounded-full transition-colors ${
@@ -348,7 +356,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
 
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-[var(--ui-sm)] text-gray-700">
-                    <Mic className="w-5 h-5 text-gray-500 shrink-0" /> 入力レベル
+                    <Mic className="w-5 h-5 text-gray-500 shrink-0" /> {t('more.inputLevel')}
                   </div>
                   <div className="font-mono text-[var(--ui-xs)] text-gray-600">
                     {inputRms.toFixed(3)} / th{' '}
@@ -359,52 +367,56 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 <VuMeter value={inputRms} threshold={vadTuning.startThreshold} />
 
                 <div className="flex items-center justify-between">
-                  <div className="text-[var(--ui-xs)] text-gray-600">詳細設定</div>
+                  <div className="text-[var(--ui-xs)] text-gray-600">{t('more.detailsLabel')}</div>
                   <button
                     type="button"
                     onClick={() => setIsVadDetailsOpen((prev) => !prev)}
                     className="text-[var(--ui-xs)] text-indigo-600 font-bold hover:text-indigo-800"
                   >
-                    {isVadDetailsOpen ? '閉じる' : '開く'}
+                    {isVadDetailsOpen ? t('more.detailsClose') : t('more.detailsOpen')}
                   </button>
                 </div>
 
                 {isVadDetailsOpen && (
                   <div className={`space-y-3 ${isVadAuto ? 'opacity-60' : ''}`}>
                     {isVadAuto && (
-                      <div className="text-[var(--ui-xs)] text-gray-500">
-                        自動調整中は詳細設定を変更できません。
-                      </div>
+                      <div className="text-[var(--ui-xs)] text-gray-500">{t('more.detailsLocked')}</div>
                     )}
                     <div className="text-[var(--ui-xs)] text-gray-500 space-y-1">
                       <div>
-                        開発用: VADエンジン <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
+                        {t('more.vadEngineLabel')}{' '}
+                        <span className={`font-mono ${vadEngineClass}`}>{vadEngineLabel}</span>
                       </div>
                       <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
                         <span className={diagValueClass(isCrossOriginIsolated)}>
-                          COI:{isCrossOriginIsolated ? 'OK' : 'NG'}
+                          {t('more.diagCoi')}:{diagStatus(isCrossOriginIsolated)}
                         </span>
                         <span className={diagValueClass(isSecureContext)}>
-                          Secure:{isSecureContext ? 'OK' : 'NG'}
+                          {t('more.diagSecure')}:{diagStatus(isSecureContext)}
                         </span>
                         <span className={diagValueClass(hasSharedArrayBuffer)}>
-                          SAB:{hasSharedArrayBuffer ? 'OK' : 'NG'}
+                          {t('more.diagSab')}:{diagStatus(hasSharedArrayBuffer)}
                         </span>
-                        <span className={diagValueClass(supportsSimd)}>SIMD:{supportsSimd ? 'OK' : 'NG'}</span>
-                        <span className={diagValueClass(supportsThreads)}>Threads:{supportsThreads ? 'OK' : 'NG'}</span>
+                        <span className={diagValueClass(supportsSimd)}>
+                          {t('more.diagSimd')}:{diagStatus(supportsSimd)}
+                        </span>
+                        <span className={diagValueClass(supportsThreads)}>
+                          {t('more.diagThreads')}:{diagStatus(supportsThreads)}
+                        </span>
                         <span className={diagValueClass(serviceWorkerControlled)}>
-                          SW:{serviceWorkerControlled ? 'OK' : 'NG'}
+                          {t('more.diagSw')}:{diagStatus(serviceWorkerControlled)}
                         </span>
                       </div>
                       {vadEngineError && (
                         <div className="text-[var(--ui-xs)] text-gray-500">
-                          VADエラー: <span className="font-mono text-rose-600 break-all">{vadEngineError}</span>
+                          {t('more.vadError')}{' '}
+                          <span className="font-mono text-rose-600 break-all">{vadEngineError}</span>
                         </div>
                       )}
                     </div>
 
                     <div className="text-[var(--ui-xs)] text-gray-600">
-                      セリフ検出：感度
+                      {t('more.vadSensitivity')}
                       <div className="mt-1 flex items-center gap-2">
                         <input
                           type="range"
@@ -418,14 +430,14 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                           onBlur={onCommitVadThresholdScale}
                           disabled={isVadAuto}
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:cursor-default"
-                          aria-label="セリフ検出感度"
+                          aria-label={t('more.vadSensitivity')}
                         />
                         <div className="w-12 text-right font-mono text-[var(--ui-xs)] text-gray-600">{thresholdPercent}%</div>
                       </div>
                     </div>
 
                     <div className="text-[var(--ui-xs)] text-gray-600">
-                      セリフ検出：途切れにくさ
+                      {t('more.vadStability')}
                       <div className="mt-1 flex items-center gap-2">
                         <input
                           type="range"
@@ -442,21 +454,24 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                     </div>
 
                     <label className="text-[var(--ui-xs)] text-gray-600">
-                      環境
+                      {t('more.environmentLabel')}
                       <select
                         value={vadPreset}
                         onChange={(e) => onChangeVadPreset(e.target.value as VadPreset)}
                         disabled={isVadAuto}
                         className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-[var(--ui-sm)] disabled:bg-gray-100"
                       >
-                        <option value="quiet">静か</option>
-                        <option value="normal">普通</option>
-                        <option value="noisy">騒がしい</option>
+                        <option value="quiet">{t('more.environmentQuiet')}</option>
+                        <option value="normal">{t('more.environmentNormal')}</option>
+                        <option value="noisy">{t('more.environmentNoisy')}</option>
                       </select>
                     </label>
 
                     <div className="text-[var(--ui-xs)] text-gray-500">
-                      hold {vadTuning.holdFrames}f / end {vadTuning.endThreshold.toFixed(3)}
+                      {t('more.vadDebugValues', {
+                        hold: vadTuning.holdFrames,
+                        end: vadTuning.endThreshold.toFixed(3),
+                      })}
                     </div>
                   </div>
                 )}
@@ -464,10 +479,10 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
             </div>
 
             <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">録音</div>
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.recordingSection')}</div>
               <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">
                 <div className="flex items-center gap-2 text-[var(--ui-sm)] text-gray-700">
-                  <Headphones className="w-5 h-5 text-gray-500" /> 録音中の再生
+                  <Headphones className="w-5 h-5 text-gray-500" /> {t('more.playWhileRecording')}
                 </div>
                 <button
                   type="button"
@@ -488,7 +503,7 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 </button>
               </div>
               <div className="text-[var(--ui-xs)] text-gray-500">
-                既存トラックを聞きながら録音する場合にON（遅延が気になる場合はOFF）
+                {t('more.playWhileRecordingHelp')}
               </div>
             </div>
 
