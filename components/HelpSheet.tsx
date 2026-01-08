@@ -79,6 +79,18 @@ export const HelpSheet: React.FC<HelpSheetProps> = ({ isOpen, onClose }) => {
             </section>
 
             <section className="space-y-2">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">入力レベル最適化</div>
+              <ul className="list-disc ml-4 space-y-1">
+                <li>「その他」→「入力最適化」からレベルテスト/録音ゲイン/リミッターを調整できます。</li>
+                <li>レベルテストは開始後1秒ほど待ってから、普段の声量で3〜4秒話してください。</li>
+                <li>しゃべりが検出できない場合はエラーになり、再テストを促します。</li>
+                <li>テスト結果に合わせて録音ゲインが自動適用され、スライダーで微調整できます。</li>
+                <li>リミッターはピークを軽く抑えて歪みを減らします（元がクリップしている音は完全には戻りません）。</li>
+                <li>録音/再生中はテストやリミッター設定を変更できません。</li>
+              </ul>
+            </section>
+
+            <section className="space-y-2">
               <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">編集</div>
               <ul className="list-disc ml-4 space-y-1">
                 <li>PCはドラッグ、スマホはタップしたままドラッグで範囲選択します。</li>
