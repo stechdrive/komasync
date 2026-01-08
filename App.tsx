@@ -39,7 +39,7 @@ import { MoreSheet } from './components/MoreSheet';
 import { TopBar } from './components/TopBar';
 import { TransportDock } from './components/TransportDock';
 import { useViewportHeight } from './hooks/useViewportHeight';
-import { FrameData, RecordingState, Track } from './types';
+import { FrameData, InputTestState, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
@@ -60,6 +60,17 @@ const AUTO_VAD_BASE_STABILITY = 0.4;
 const MIN_AUTO_TUNE_FRAMES = 6;
 // 末尾側に余白列を確保して、終了後の選択/貼り付けを行えるようにする
 const VIRTUAL_TAIL_COLUMNS = 1;
+const MIN_INPUT_GAIN_DB = -18;
+const MAX_INPUT_GAIN_DB = 18;
+const INPUT_TEST_DURATION_MS = 5200;
+const INPUT_TEST_IGNORE_MS = 700;
+const INPUT_TEST_MIN_SPEECH_RATIO = 0.12;
+const INPUT_TEST_TARGET_PEAK_DB = -6;
+const INPUT_TEST_MIN_RMS = 0.008;
+const INPUT_TEST_UI_UPDATE_MS = 120;
+
+const dbToGain = (db: number): number => Math.pow(10, db / 20);
+const gainToDb = (gain: number): number => 20 * Math.log10(Math.max(gain, 1e-8));
 // ブラウザ側の音声処理が原因で音切れするケースがあるため、可能なら無効化を要求する
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: {
@@ -72,6 +83,7 @@ const MIC_CONSTRAINTS: MediaStreamConstraints = {
 
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
 const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
+const clampInputGainDb = (value: number): number => Math.min(MAX_INPUT_GAIN_DB, Math.max(MIN_INPUT_GAIN_DB, value));
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -187,6 +199,13 @@ export default function App() {
   const [vadThresholdScale, setVadThresholdScale] = useState(AUTO_VAD_BASE_THRESHOLD_SCALE);
   const [isVadAuto, setIsVadAuto] = useState(true);
   const [playWhileRecording, setPlayWhileRecording] = useState(true);
+  const [inputGainDb, setInputGainDb] = useState(0);
+  const [isLimiterEnabled, setIsLimiterEnabled] = useState(true);
+  const [inputTestState, setInputTestState] = useState<InputTestState>({
+    status: 'idle',
+    progress: 0,
+    message: '',
+  });
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
@@ -212,6 +231,9 @@ export default function App() {
   const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const limiterNodeRef = useRef<DynamicsCompressorNode | null>(null);
+  const recordingGraphCleanupRef = useRef<(() => void) | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStartFrameRef = useRef<number>(0);
   const recordingStartTimeRef = useRef<number>(0);
@@ -229,6 +251,7 @@ export default function App() {
   const isMicPreparingRef = useRef(isMicPreparing);
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
+  const inputTestAbortRef = useRef<AbortController | null>(null);
   const vadReprocessIdRef = useRef(0);
   const vadRequestIdRef = useRef<Map<string, number>>(new Map());
   const lastAutoTuneRef = useRef<Map<string, AudioBuffer | null>>(new Map());
@@ -311,6 +334,12 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      inputTestAbortRef.current?.abort();
+    };
+  }, []);
+
   // Stats (Calculate total max duration across all tracks)
   const maxFrames = Math.max(0, ...tracks.map(t => t.frames.length));
 
@@ -381,6 +410,14 @@ export default function App() {
   useEffect(() => {
     recordingStateRef.current = recordingState;
   }, [recordingState]);
+
+  useEffect(() => {
+    const node = gainNodeRef.current;
+    const ctx = audioContextRef.current;
+    if (!node || !ctx) return;
+    const nextGain = dbToGain(clampInputGainDb(inputGainDb));
+    node.gain.setTargetAtTime(nextGain, ctx.currentTime, 0.01);
+  }, [inputGainDb]);
 
   useEffect(() => {
     isMicReadyRef.current = isMicReady;
@@ -1093,6 +1130,77 @@ export default function App() {
     vuAnimationFrameRef.current = requestAnimationFrame(tick);
   };
 
+  const cleanupRecordingGraph = useCallback(() => {
+    if (recordingGraphCleanupRef.current) {
+      recordingGraphCleanupRef.current();
+      recordingGraphCleanupRef.current = null;
+    }
+    gainNodeRef.current = null;
+    limiterNodeRef.current = null;
+  }, []);
+
+  const createRecordingStream = useCallback(
+    (stream: MediaStream): { stream: MediaStream; cleanup: () => void } => {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioContextClass = getAudioContextClass();
+        audioContextRef.current = new AudioContextClass();
+      }
+      const ctx = audioContextRef.current;
+
+      const source = ctx.createMediaStreamSource(stream);
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(dbToGain(clampInputGainDb(inputGainDb)), ctx.currentTime);
+      source.connect(gainNode);
+
+      let lastNode: AudioNode = gainNode;
+      let limiterNode: DynamicsCompressorNode | null = null;
+      if (isLimiterEnabled) {
+        limiterNode = ctx.createDynamicsCompressor();
+        limiterNode.threshold.setValueAtTime(-6, ctx.currentTime);
+        limiterNode.knee.setValueAtTime(0, ctx.currentTime);
+        limiterNode.ratio.setValueAtTime(12, ctx.currentTime);
+        limiterNode.attack.setValueAtTime(0.003, ctx.currentTime);
+        limiterNode.release.setValueAtTime(0.25, ctx.currentTime);
+        gainNode.connect(limiterNode);
+        lastNode = limiterNode;
+      }
+
+      const destination = ctx.createMediaStreamDestination();
+      lastNode.connect(destination);
+
+      gainNodeRef.current = gainNode;
+      limiterNodeRef.current = limiterNode;
+
+      const cleanup = () => {
+        try {
+          source.disconnect();
+        } catch {
+          // no-op
+        }
+        try {
+          gainNode.disconnect();
+        } catch {
+          // no-op
+        }
+        if (limiterNode) {
+          try {
+            limiterNode.disconnect();
+          } catch {
+            // no-op
+          }
+        }
+        try {
+          destination.disconnect();
+        } catch {
+          // no-op
+        }
+      };
+
+      return { stream: destination.stream, cleanup };
+    },
+    [inputGainDb, isLimiterEnabled]
+  );
+
   const startRecordingWithStream = async (stream: MediaStream) => {
     // Ensure context is running first for better sync
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -1106,13 +1214,18 @@ export default function App() {
     stopScrubSources();
     isScrubbingRef.current = false;
     stopScrubState();
-    startVuMeter(stream);
+
+    cleanupRecordingGraph();
+    const { stream: recordStream, cleanup } = createRecordingStream(stream);
+    recordingGraphCleanupRef.current = cleanup;
+    startVuMeter(recordStream);
 
     const cleanupRecordingResources = () => {
       stopVuMeter();
       stopAllSources();
       cancelAnimationFrame(animationFrameRef.current);
       stopMicStream();
+      cleanupRecordingGraph();
       mediaRecorderRef.current = null;
       setRecordingState(RecordingState.IDLE);
     };
@@ -1121,7 +1234,7 @@ export default function App() {
     const options = mimeType ? { mimeType } : undefined;
 
     try {
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = new MediaRecorder(recordStream, options);
     } catch (error) {
       cleanupRecordingResources();
       throw error;
@@ -1146,6 +1259,7 @@ export default function App() {
         stopVuMeter();
         stopAllSources();
         cancelAnimationFrame(animationFrameRef.current);
+        cleanupRecordingGraph();
         setRecordingState(RecordingState.IDLE);
         return;
       }
@@ -1155,6 +1269,7 @@ export default function App() {
         stopVuMeter();
         stopAllSources();
         cancelAnimationFrame(animationFrameRef.current);
+        cleanupRecordingGraph();
         setRecordingState(RecordingState.IDLE);
         return;
       }
@@ -1170,6 +1285,7 @@ export default function App() {
       // Also stop playback if it was running
       stopAllSources();
       cancelAnimationFrame(animationFrameRef.current);
+      cleanupRecordingGraph();
     };
 
     mediaRecorderRef.current.onerror = (event) => {
@@ -1216,6 +1332,11 @@ export default function App() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       alert("お使いのブラウザは録音機能をサポートしていません。");
       return;
+    }
+    if (inputTestAbortRef.current) {
+      inputTestAbortRef.current.abort();
+      inputTestAbortRef.current = null;
+      setInputTestState({ status: 'idle', progress: 0, message: 'レベルテストを中断しました。' });
     }
     if (recordingState === RecordingState.PLAYING) {
       handlePause();
@@ -1798,10 +1919,11 @@ export default function App() {
     autoMicWarmupRef.current = false;
     setIsMicPreparing(false);
     setIsMicReady(false);
+    cleanupRecordingGraph();
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     micStreamRef.current = null;
-  }, []);
+  }, [cleanupRecordingGraph]);
 
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
@@ -2079,6 +2201,194 @@ export default function App() {
     setSheetZoom(normalizeSheetZoom(value));
   }, []);
 
+  const handleChangeInputGainDb = useCallback((value: number) => {
+    setInputGainDb(clampInputGainDb(value));
+  }, []);
+
+  const handleToggleLimiter = useCallback((value: boolean) => {
+    setIsLimiterEnabled(value);
+  }, []);
+
+  const handleStartInputTest = useCallback(async () => {
+    if (recordingState !== RecordingState.IDLE) {
+      alert('録音や再生中はレベルテストを開始できません。');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('お使いのブラウザは録音機能をサポートしていません。');
+      return;
+    }
+
+    if (inputTestAbortRef.current) {
+      inputTestAbortRef.current.abort();
+      inputTestAbortRef.current = null;
+    }
+    const aborter = new AbortController();
+    inputTestAbortRef.current = aborter;
+
+    setInputTestState({
+      status: 'running',
+      progress: 0,
+      message: 'テスト開始。1秒ほど待ってから普段の声量で話してください。',
+    });
+
+    try {
+      const stream = await ensureMicReady();
+      if (aborter.signal.aborted) return;
+
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioContextClass = getAudioContextClass();
+        audioContextRef.current = new AudioContextClass();
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      const ctx = audioContextRef.current;
+
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+
+      const buffer = new Float32Array(analyser.fftSize);
+      const rmsValues: number[] = [];
+      let peak = 0;
+      let rafId = 0;
+      let lastUiUpdate = 0;
+      const startedAt = performance.now();
+
+      const cleanup = () => {
+        if (rafId) cancelAnimationFrame(rafId);
+        try {
+          source.disconnect();
+        } catch {
+          // no-op
+        }
+        try {
+          analyser.disconnect();
+        } catch {
+          // no-op
+        }
+      };
+
+      const finishWithError = (message: string) => {
+        cleanup();
+        inputTestAbortRef.current = null;
+        setInputTestState({
+          status: 'error',
+          progress: 1,
+          message,
+        });
+      };
+
+      const finish = () => {
+        cleanup();
+        inputTestAbortRef.current = null;
+
+        if (rmsValues.length < 6) {
+          finishWithError('音声が検出できませんでした。もう一度テストしてください。');
+          return;
+        }
+
+        const sorted = [...rmsValues].sort((a, b) => a - b);
+        const noiseFloor = sorted[Math.floor(sorted.length * 0.2)] ?? 0;
+        const speechThreshold = Math.max(INPUT_TEST_MIN_RMS, noiseFloor * 3);
+        const speechFrames = rmsValues.filter((value) => value >= speechThreshold);
+        const speechRatio = speechFrames.length / rmsValues.length;
+
+        if (speechRatio < INPUT_TEST_MIN_SPEECH_RATIO) {
+          finishWithError('声がほとんど検出できませんでした。普段の声量で話してみてください。');
+          return;
+        }
+
+        const speechRms = speechFrames.reduce((sum, value) => sum + value, 0) / speechFrames.length;
+        const peakDb = gainToDb(peak);
+        const rmsDb = gainToDb(speechRms);
+        const recommendedGainDb = INPUT_TEST_TARGET_PEAK_DB - peakDb;
+        const appliedGainDb = clampInputGainDb(recommendedGainDb);
+        const clipped = peak >= 0.98;
+
+        setInputGainDb(appliedGainDb);
+
+        let message = `テスト完了。${appliedGainDb >= 0 ? '+' : ''}${appliedGainDb.toFixed(
+          1
+        )} dB を適用しました（ピーク ${peakDb.toFixed(1)} dBFS / 平均 ${rmsDb.toFixed(1)} dBFS）。`;
+
+        if (recommendedGainDb > MAX_INPUT_GAIN_DB) {
+          message += ' 入力が小さいため、最大まで持ち上げています。';
+        } else if (recommendedGainDb < MIN_INPUT_GAIN_DB) {
+          message += ' 入力が大きいため、最小まで下げています。';
+        }
+
+        if (clipped) {
+          message += ' 入力が飽和気味です。可能ならOS側の入力を下げてください。';
+        }
+
+        setInputTestState({
+          status: 'success',
+          progress: 1,
+          message,
+          recommendedGainDb,
+          appliedGainDb,
+          peakDb,
+          rmsDb,
+          speechRatio,
+          clipped,
+        });
+      };
+
+      const tick = () => {
+        if (aborter.signal.aborted) {
+          cleanup();
+          inputTestAbortRef.current = null;
+          return;
+        }
+        const now = performance.now();
+        const elapsed = now - startedAt;
+
+        analyser.getFloatTimeDomainData(buffer);
+        if (elapsed >= INPUT_TEST_IGNORE_MS) {
+          let sumSquares = 0;
+          let framePeak = 0;
+          for (let i = 0; i < buffer.length; i += 1) {
+            const value = buffer[i];
+            sumSquares += value * value;
+            const abs = Math.abs(value);
+            if (abs > framePeak) framePeak = abs;
+          }
+          const rms = Math.sqrt(sumSquares / buffer.length);
+          rmsValues.push(rms);
+          if (framePeak > peak) peak = framePeak;
+        }
+
+        if (now - lastUiUpdate >= INPUT_TEST_UI_UPDATE_MS) {
+          lastUiUpdate = now;
+          setInputTestState((prev) =>
+            prev.status === 'running'
+              ? { ...prev, progress: Math.min(1, elapsed / INPUT_TEST_DURATION_MS) }
+              : prev
+          );
+        }
+
+        if (elapsed >= INPUT_TEST_DURATION_MS) {
+          finish();
+          return;
+        }
+
+        rafId = requestAnimationFrame(tick);
+      };
+
+      rafId = requestAnimationFrame(tick);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setInputTestState({
+        status: 'error',
+        progress: 1,
+        message: message ? `テストに失敗しました: ${message}` : 'テストに失敗しました。',
+      });
+    }
+  }, [ensureMicReady, recordingState]);
+
   const handleScrubStart = (frame: number) => {
     if (recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING) return;
     if (recordingState === RecordingState.PLAYING) handlePause();
@@ -2328,12 +2638,20 @@ export default function App() {
         vadEngineStatus={vadEngineStatus}
         vadEngineError={vadEngineError}
         inputRmsRef={inputRmsRef}
+        inputGainDb={inputGainDb}
+        isLimiterEnabled={isLimiterEnabled}
+        inputTestState={inputTestState}
+        isInputTestBusy={inputTestState.status === 'running'}
+        isInputConfigLocked={recordingState !== RecordingState.IDLE}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
         onExportAudio={() => void handleExportAudio()}
         onExportSheetImagesCurrent={() => void handleExportSheetImagesCurrent()}
         onExportSheetImagesAll={() => void handleExportSheetImagesAll()}
         onFileUpload={handleFileUpload}
+        onStartInputTest={handleStartInputTest}
+        onChangeInputGainDb={handleChangeInputGainDb}
+        onToggleLimiter={handleToggleLimiter}
         onChangeVadPreset={setVadPreset}
         onChangeVadStability={handleVadStabilityChange}
         onToggleVadAuto={handleToggleVadAuto}

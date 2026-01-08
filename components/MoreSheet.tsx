@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
-import { Track } from '@/types';
+import { InputTestState, Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 import { getVadTuning, VadPreset } from '@/services/vad';
@@ -17,12 +17,20 @@ type MoreSheetProps = {
   vadEngineStatus: SileroVadStatus;
   vadEngineError: SileroVadError;
   inputRmsRef: React.MutableRefObject<number>;
+  inputGainDb: number;
+  isLimiterEnabled: boolean;
+  inputTestState: InputTestState;
+  isInputTestBusy: boolean;
+  isInputConfigLocked: boolean;
   playWhileRecording: boolean;
   onClose: () => void;
   onExportAudio: () => void;
   onExportSheetImagesCurrent: () => void;
   onExportSheetImagesAll: () => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onStartInputTest: () => void;
+  onChangeInputGainDb: (value: number) => void;
+  onToggleLimiter: (nextValue: boolean) => void;
   onChangeVadPreset: (preset: VadPreset) => void;
   onChangeVadStability: (stability01: number) => void;
   onToggleVadAuto: (nextValue: boolean) => void;
@@ -69,6 +77,11 @@ const isThreadSupported = (): boolean => {
   }
 };
 
+const formatDb = (value: number, digits: number = 1): string => {
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(digits)} dB`;
+};
+
 export const MoreSheet: React.FC<MoreSheetProps> = ({
   isOpen,
   tracks,
@@ -80,12 +93,20 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   vadEngineStatus,
   vadEngineError,
   inputRmsRef,
+  inputGainDb,
+  isLimiterEnabled,
+  inputTestState,
+  isInputTestBusy,
+  isInputConfigLocked,
   playWhileRecording,
   onClose,
   onExportAudio,
   onExportSheetImagesCurrent,
   onExportSheetImagesAll,
   onFileUpload,
+  onStartInputTest,
+  onChangeInputGainDb,
+  onToggleLimiter,
   onChangeVadPreset,
   onChangeVadStability,
   onToggleVadAuto,
@@ -145,6 +166,14 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   const autoCaption = isVadAuto
     ? '6コマ以上の録音があると自動で最適化'
     : '手動で感度と途切れにくさを調整できます';
+  const gainLabel = formatDb(inputGainDb, 1);
+  const testProgress = Math.min(1, Math.max(0, inputTestState.progress));
+  const testStatusClass =
+    inputTestState.status === 'error'
+      ? 'text-rose-600'
+      : inputTestState.status === 'success'
+        ? 'text-blue-600'
+        : 'text-gray-600';
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
@@ -203,6 +232,90 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                 {activeTrackName} に音声を読み込む
                 <input type="file" accept="audio/*" onChange={onFileUpload} className="hidden" />
               </label>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">入力最適化</div>
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3">
+                <div className="text-[var(--ui-xs)] text-gray-600">
+                  テスト開始後、1秒ほど待ってから普段の声量で3〜4秒話してください。結果に合わせて録音ゲインを自動調整します。
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onStartInputTest}
+                  disabled={isInputTestBusy || isInputConfigLocked}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 disabled:opacity-60 disabled:cursor-default"
+                >
+                  <Mic className="w-5 h-5" />
+                  {isInputTestBusy ? '計測中…' : 'レベルテストを開始'}
+                </button>
+
+                <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 transition-all"
+                    style={{ width: `${Math.round(testProgress * 100)}%` }}
+                  />
+                </div>
+
+                {inputTestState.message && (
+                  <div className={`text-[var(--ui-xs)] ${testStatusClass}`}>{inputTestState.message}</div>
+                )}
+
+                {inputTestState.status === 'success' && (
+                  <div className="text-[var(--ui-xs)] text-gray-500">
+                    推奨 {formatDb(inputTestState.recommendedGainDb ?? inputGainDb, 1)} / 適用{' '}
+                    {formatDb(inputTestState.appliedGainDb ?? inputGainDb, 1)}
+                  </div>
+                )}
+
+                <div className="text-[var(--ui-xs)] text-gray-600">
+                  録音ゲイン
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="-18"
+                      max="18"
+                      step="1"
+                      value={Math.round(inputGainDb)}
+                      onChange={(e) => onChangeInputGainDb(parseInt(e.target.value, 10))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                      aria-label="録音ゲイン"
+                    />
+                    <div className="w-14 text-right font-mono text-[var(--ui-xs)] text-gray-600">{gainLabel}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="text-[var(--ui-xs)] text-gray-600">リミッター</div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleLimiter(!isLimiterEnabled)}
+                    className="w-[var(--control-size)] h-[var(--control-size)] flex items-center justify-center"
+                    disabled={isInputConfigLocked}
+                    aria-pressed={isLimiterEnabled}
+                    aria-label="リミッターの切り替え"
+                  >
+                    <div
+                      className={`relative w-10 h-6 rounded-full transition-colors ${
+                        isLimiterEnabled ? 'bg-indigo-600' : 'bg-gray-300'
+                      } ${isInputConfigLocked ? 'opacity-60' : ''}`}
+                    >
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                          isLimiterEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </div>
+                  </button>
+                </div>
+                <div className="text-[var(--ui-xs)] text-gray-500">
+                  クリップに近い入力を軽く抑えて歪みを減らします（元がクリップしている場合は完全には復元できません）。
+                </div>
+                {isInputConfigLocked && (
+                  <div className="text-[var(--ui-xs)] text-gray-500">録音/再生中はリミッター設定を変更できません。</div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">

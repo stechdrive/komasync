@@ -36,3 +36,17 @@ export interface Track {
   isVisible: boolean;
   isMuted: boolean;
 }
+
+export type InputTestStatus = 'idle' | 'running' | 'success' | 'error';
+
+export type InputTestState = {
+  status: InputTestStatus;
+  progress: number;
+  message: string;
+  recommendedGainDb?: number;
+  appliedGainDb?: number;
+  peakDb?: number;
+  rmsDb?: number;
+  speechRatio?: number;
+  clipped?: boolean;
+};
