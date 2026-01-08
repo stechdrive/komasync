@@ -58,6 +58,17 @@ const SHEET_ZOOM_STEP = 0.1;
 const AUTO_VAD_BASE_THRESHOLD_SCALE = 1;
 const AUTO_VAD_BASE_STABILITY = 0.4;
 const MIN_AUTO_TUNE_FRAMES = 6;
+// 末尾側に余白列を確保して、終了後の選択/貼り付けを行えるようにする
+const VIRTUAL_TAIL_COLUMNS = 1;
+// ブラウザ側の音声処理が原因で音切れするケースがあるため、可能なら無効化を要求する
+const MIC_CONSTRAINTS: MediaStreamConstraints = {
+  audio: {
+    echoCancellation: { ideal: false },
+    noiseSuppression: { ideal: false },
+    autoGainControl: { ideal: false },
+    channelCount: { ideal: 1 },
+  },
+};
 
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
 const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
@@ -307,7 +318,10 @@ export default function App() {
     maxFramesRef.current = maxFrames;
     const baseFrame = Math.max(0, Math.floor(currentFrameRef.current));
     const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
-    const required = Math.max(maxFrames, (columnIndex + 1) * FRAMES_PER_COLUMN);
+    const required = Math.max(
+      maxFrames,
+      (columnIndex + 1 + VIRTUAL_TAIL_COLUMNS) * FRAMES_PER_COLUMN
+    );
     if (required !== virtualMaxFramesRef.current) {
       virtualMaxFramesRef.current = required;
       setVirtualMaxFrames(required);
@@ -321,7 +335,10 @@ export default function App() {
   const bumpVirtualMaxFrames = useCallback((frame: number) => {
     const baseFrame = Math.max(0, Math.floor(frame));
     const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
-    const required = Math.max(maxFramesRef.current, (columnIndex + 1) * FRAMES_PER_COLUMN);
+    const required = Math.max(
+      maxFramesRef.current,
+      (columnIndex + 1 + VIRTUAL_TAIL_COLUMNS) * FRAMES_PER_COLUMN
+    );
     if (required <= virtualMaxFramesRef.current) return;
     virtualMaxFramesRef.current = required;
     setVirtualMaxFrames(required);
@@ -1814,7 +1831,7 @@ export default function App() {
     }
 
     setIsMicPreparing(true);
-    const prepare = navigator.mediaDevices.getUserMedia({ audio: true })
+    const prepare = navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
       .then((stream) => {
         micStreamRef.current = stream;
         setIsMicReady(true);

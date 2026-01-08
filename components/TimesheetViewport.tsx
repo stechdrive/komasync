@@ -161,6 +161,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const isAutoScrollEnabled = isAutoScrollActive || isScrubbing;
   const allowSingleFingerPan = !isIOS && !isZoomed;
   const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
+  const pointerEdgeEpsilon = isIOS ? 0 : 1;
 
   useEffect(() => {
     selectionRangeRef.current = selection;
@@ -590,7 +591,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
       const localX = clientX - rect.left;
       const localY = clientY - rect.top;
-      const edgeEpsilon = 1;
+      const edgeEpsilon = pointerEdgeEpsilon;
 
       if (
         localX < 0 ||
@@ -668,6 +669,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       columnWidth,
       framesPerColumn,
       getRenderRange,
+      pointerEdgeEpsilon,
       rowHeight,
       rulerWidth,
       totalColumns,
@@ -692,7 +694,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
       const localX = clientX - rect.left;
       const localY = clientY - rect.top;
-      const edgeEpsilon = 1;
+      const edgeEpsilon = pointerEdgeEpsilon;
 
       if (
         localX < 0 ||
@@ -758,6 +760,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       framesPerColumn,
       getRenderRange,
       getRulerTarget,
+      pointerEdgeEpsilon,
       rowHeight,
       rulerWidth,
       totalColumns,
@@ -794,7 +797,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
       const localX = clientX - rect.left;
       const localY = clientY - rect.top;
-      const edgeEpsilon = 1;
+      const edgeEpsilon = pointerEdgeEpsilon;
 
       if (
         localX < 0 ||
@@ -864,6 +867,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       columnWidth,
       framesPerColumn,
       getRenderRange,
+      pointerEdgeEpsilon,
       rowHeight,
       totalColumns,
     ]
