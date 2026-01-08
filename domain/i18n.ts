@@ -174,7 +174,7 @@ const messages: I18nMessages = {
         '下部の「話」「無」で現在の1コマにセリフ/非セリフのラベルを付けられます。',
         '「話」「無」を押すと次のコマへ移動します（再生/録音中は不可）。',
         '+1fボタンで無音フレームを挿入します。',
-        '-1fボタンで現在の行を削除して詰めます。',
+        '-1fボタンで現在の行を削除して詰めます（選択範囲がある場合は範囲削除）。',
       ],
       exportTitle: 'インポート / 書き出し',
       exportItems: [
@@ -407,7 +407,7 @@ const messages: I18nMessages = {
         'Use the bottom Speech/Non-speech buttons to label the current frame.',
         'Pressing Speech/Non-speech moves to the next frame (disabled during play/record).',
         'The +1f button inserts a silent frame.',
-        'The -1f button deletes the current row and closes the gap.',
+        'The -1f button deletes the current row and closes the gap (deletes the selection if present).',
       ],
       exportTitle: 'Import / Export',
       exportItems: [

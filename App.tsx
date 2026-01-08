@@ -1872,6 +1872,12 @@ export default function App() {
   const handleDeleteOneFrame = async () => {
     if (recordingState === RecordingState.PLAYING) handlePause();
 
+    flushSelectionUpdates();
+    if (getNormalizedSelection()) {
+      await handleDeleteSelection();
+      return;
+    }
+
     try {
       saveToHistory();
 
