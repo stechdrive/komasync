@@ -43,7 +43,7 @@ import { FrameData, InputTestState, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
-import { createI18n, getInitialLanguage, setStoredLanguage, type Language } from './domain/i18n';
+import { createI18n, getInitialLanguage, type Language } from './domain/i18n';
 
 const FPS = DEFAULT_FPS;
 const FRAMES_PER_COLUMN = getFramesPerColumn(FPS);
@@ -415,8 +415,13 @@ export default function App() {
   }, [recordingState]);
 
   useEffect(() => {
-    setStoredLanguage(language);
-  }, [language]);
+    if (typeof window === 'undefined') return;
+    const handleLanguageChange = () => {
+      setLanguage(getInitialLanguage());
+    };
+    window.addEventListener('languagechange', handleLanguageChange);
+    return () => window.removeEventListener('languagechange', handleLanguageChange);
+  }, []);
 
   useEffect(() => {
     const node = gainNodeRef.current;
@@ -2054,10 +2059,6 @@ export default function App() {
     }
   };
 
-  const handleLanguageChange = useCallback((next: Language) => {
-    setLanguage(next);
-  }, []);
-
   const scheduleSelectionUpdate = useCallback(
     (range: SelectionRange | null) => {
       if (areSelectionRangesEqual(selectionRef.current, range)) {
@@ -2706,7 +2707,6 @@ export default function App() {
         inputTestState={inputTestState}
         isInputTestBusy={inputTestState.status === 'running'}
         isInputConfigLocked={recordingState !== RecordingState.IDLE}
-        language={language}
         t={t}
         playWhileRecording={playWhileRecording}
         onClose={() => setIsMoreOpen(false)}
@@ -2717,7 +2717,6 @@ export default function App() {
         onStartInputTest={handleStartInputTest}
         onChangeInputGainDb={handleChangeInputGainDb}
         onToggleLimiter={handleToggleLimiter}
-        onChangeLanguage={handleLanguageChange}
         onChangeVadPreset={setVadPreset}
         onChangeVadStability={handleVadStabilityChange}
         onToggleVadAuto={handleToggleVadAuto}

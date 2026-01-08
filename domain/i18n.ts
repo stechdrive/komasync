@@ -2,8 +2,6 @@ export type Language = 'ja' | 'en';
 export type Translator = (key: string, params?: Record<string, string | number>) => string;
 export type ListTranslator = (key: string) => string[];
 
-const STORAGE_KEY = 'komasync.language';
-
 type I18nValue = string | string[] | Record<string, I18nValue>;
 
 type I18nMessages = {
@@ -116,9 +114,6 @@ const messages: I18nMessages = {
       recordingSection: '録音',
       playWhileRecording: '録音中の再生',
       playWhileRecordingHelp: '既存トラックを聞きながら録音する場合にON（遅延が気になる場合はOFF）',
-      languageSection: '表示言語',
-      languageJapanese: '日本語',
-      languageEnglish: 'English',
     },
     help: {
       title: 'ヘルプ',
@@ -352,9 +347,6 @@ const messages: I18nMessages = {
       recordingSection: 'Recording',
       playWhileRecording: 'Play while recording',
       playWhileRecordingHelp: 'Turn on to monitor existing tracks while recording (turn off if latency bothers you)',
-      languageSection: 'Language',
-      languageJapanese: '日本語',
-      languageEnglish: 'English',
     },
     help: {
       title: 'Help',
@@ -520,24 +512,16 @@ export const createI18n = (language: Language): { t: Translator; list: ListTrans
   return { t, list };
 };
 
-export const getStoredLanguage = (): Language | null => {
-  if (typeof window === 'undefined') return null;
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === 'ja' || stored === 'en') return stored;
-  return null;
-};
-
-export const setStoredLanguage = (language: Language): void => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, language);
-};
-
 export const getInitialLanguage = (): Language => {
-  const stored = getStoredLanguage();
-  if (stored) return stored;
   if (typeof navigator !== 'undefined') {
-    const lang = navigator.language?.toLowerCase() ?? '';
-    if (lang.startsWith('ja')) return 'ja';
+    const locales = Array.isArray(navigator.languages) && navigator.languages.length > 0
+      ? navigator.languages
+      : navigator.language
+        ? [navigator.language]
+        : [];
+    const primary = locales[0]?.toLowerCase() ?? '';
+    if (primary.startsWith('ja')) return 'ja';
+    if (primary) return 'en';
   }
   return 'ja';
 };

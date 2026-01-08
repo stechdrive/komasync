@@ -5,7 +5,7 @@ import { VuMeter } from '@/components/VuMeter';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
 import { getVadTuning, VadPreset } from '@/services/vad';
 import type { SileroVadError, SileroVadStatus } from '@/services/sileroVadEngine';
-import type { Language, Translator } from '@/domain/i18n';
+import type { Translator } from '@/domain/i18n';
 
 type MoreSheetProps = {
   isOpen: boolean;
@@ -23,7 +23,6 @@ type MoreSheetProps = {
   inputTestState: InputTestState;
   isInputTestBusy: boolean;
   isInputConfigLocked: boolean;
-  language: Language;
   t: Translator;
   playWhileRecording: boolean;
   onClose: () => void;
@@ -34,7 +33,6 @@ type MoreSheetProps = {
   onStartInputTest: () => void;
   onChangeInputGainDb: (value: number) => void;
   onToggleLimiter: (nextValue: boolean) => void;
-  onChangeLanguage: (nextLanguage: Language) => void;
   onChangeVadPreset: (preset: VadPreset) => void;
   onChangeVadStability: (stability01: number) => void;
   onToggleVadAuto: (nextValue: boolean) => void;
@@ -102,7 +100,6 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   inputTestState,
   isInputTestBusy,
   isInputConfigLocked,
-  language,
   t,
   playWhileRecording,
   onClose,
@@ -113,7 +110,6 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   onStartInputTest,
   onChangeInputGainDb,
   onToggleLimiter,
-  onChangeLanguage,
   onChangeVadPreset,
   onChangeVadStability,
   onToggleVadAuto,
@@ -508,34 +504,6 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
               </div>
               <div className="text-[var(--ui-xs)] text-gray-500">
                 {t('more.playWhileRecordingHelp')}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.languageSection')}</div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onChangeLanguage('ja')}
-                  className={`flex-1 min-h-[var(--control-size)] rounded-xl border px-3 py-2 text-[var(--ui-sm)] font-bold ${
-                    language === 'ja'
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
-                  }`}
-                >
-                  {t('more.languageJapanese')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onChangeLanguage('en')}
-                  className={`flex-1 min-h-[var(--control-size)] rounded-xl border px-3 py-2 text-[var(--ui-sm)] font-bold ${
-                    language === 'en'
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
-                  }`}
-                >
-                  {t('more.languageEnglish')}
-                </button>
               </div>
             </div>
 
