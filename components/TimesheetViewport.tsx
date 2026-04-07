@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
+import { formatTimecodeOneBased } from '@/domain/timecode';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
 import { EditTarget, SelectionRange } from '@/domain/editTypes';
 import type { Translator } from '@/domain/i18n';
@@ -43,6 +44,8 @@ const EDGE_SCROLL_MAX_SPEED_MOUSE = 6;
 const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
+const MOBILE_SCRUB_RAIL_WIDTH = 44;
+const MOBILE_SCRUB_RAIL_OFFSET = 6;
 
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
@@ -121,11 +124,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     lastClientY: number;
   } | null>(null);
   const mouseSelectionCursorRef = useRef<HTMLDivElement | null>(null);
+  const mobileScrubRailRef = useRef<HTMLDivElement | null>(null);
+  const mobileScrubPointerIdRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [isMouseSelectionCursorVisible, setIsMouseSelectionCursorVisible] = useState(false);
+  const [isMobileScrubRailActive, setIsMobileScrubRailActive] = useState(false);
   const scrollLeftRef = useRef(0);
   const scrollTopRef = useRef(0);
   const scrollLeftRafRef = useRef<number | null>(null);
@@ -620,6 +626,24 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
   const currentColumnIndex = Math.max(0, Math.floor(currentFrame / framesPerColumn));
   const currentSheetIndex = Math.floor(currentColumnIndex / COLUMNS_PER_SHEET);
+  const currentFrameRailOffset = useMemo(() => {
+    if (!isMobileTimesheetLayout || rowHeight <= 0) return null;
+    return currentFrame * rowHeight + rowHeight / 2 - scrollTop;
+  }, [currentFrame, isMobileTimesheetLayout, rowHeight, scrollTop]);
+  const mobileRailTicks = useMemo(() => {
+    if (!isMobileTimesheetLayout || rowHeight <= 0 || viewportHeight <= 0) return [];
+    const firstFrame = Math.max(0, Math.floor(scrollTop / rowHeight));
+    const visibleFrames = Math.ceil(viewportHeight / rowHeight) + 2;
+    return Array.from({ length: visibleFrames }, (_, index) => {
+      const frame = firstFrame + index;
+      const top = frame * rowHeight - scrollTop;
+      const frameInSecond = (frame % fps) + 1;
+      const half = Math.floor(fps / 2);
+      const isSecond = frameInSecond % fps === 0;
+      const isHalfSecond = half > 0 ? frameInSecond % half === 0 : false;
+      return { frame, top, isSecond, isHalfSecond };
+    });
+  }, [fps, isMobileTimesheetLayout, rowHeight, scrollTop, viewportHeight]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (suppressBackdropClickRef.current) {
@@ -652,6 +676,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (Number.isNaN(frame)) return null;
     return { frame };
   }, []);
+
+  const getMobileRailFrameAtPoint = useCallback((clientY: number): number | null => {
+    const rail = mobileScrubRailRef.current;
+    if (!rail || rowHeight <= 0) return null;
+    const rect = rail.getBoundingClientRect();
+    if (rect.height <= 0) return null;
+    const localY = clamp(clientY - rect.top, 0, Math.max(0, rect.height - 1));
+    const maxFrame = Math.max(0, totalColumns * framesPerColumn - 1);
+    return clamp(Math.floor((scrollTopRef.current + localY) / rowHeight), 0, maxFrame);
+  }, [framesPerColumn, rowHeight, totalColumns]);
 
   const getTrackAtPoint = useCallback(
     (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
@@ -1426,6 +1460,61 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     openSelectionMenu({ x: e.clientX, y: e.clientY }, target);
   };
 
+  const startMobileRailScrub = useCallback((clientY: number) => {
+    const frame = getMobileRailFrameAtPoint(clientY);
+    if (frame === null) return false;
+    setIsMobileScrubRailActive(true);
+    onScrubStart?.(frame);
+    return true;
+  }, [getMobileRailFrameAtPoint, onScrubStart]);
+
+  const stopMobileRailScrub = useCallback(() => {
+    if (mobileScrubPointerIdRef.current === null && !isMobileScrubRailActive) return;
+    mobileScrubPointerIdRef.current = null;
+    setIsMobileScrubRailActive(false);
+    onScrubEnd?.();
+  }, [isMobileScrubRailActive, onScrubEnd]);
+
+  const handleMobileRailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobileTimesheetLayout) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mobileScrubPointerIdRef.current = e.pointerId;
+    if (!e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    void startMobileRailScrub(e.clientY);
+  }, [isMobileTimesheetLayout, startMobileRailScrub]);
+
+  const handleMobileRailPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobileTimesheetLayout) return;
+    if (mobileScrubPointerIdRef.current !== e.pointerId) return;
+    const frame = getMobileRailFrameAtPoint(e.clientY);
+    if (frame === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onScrubMove?.(frame);
+  }, [getMobileRailFrameAtPoint, isMobileTimesheetLayout, onScrubMove]);
+
+  const handleMobileRailPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (mobileScrubPointerIdRef.current !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    stopMobileRailScrub();
+  }, [stopMobileRailScrub]);
+
+  const handleMobileRailPointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (mobileScrubPointerIdRef.current !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    stopMobileRailScrub();
+  }, [stopMobileRailScrub]);
+
   const handlePointerDown = (e: React.PointerEvent) => {
     updateRectRef();
     updatePointer(e);
@@ -1481,8 +1570,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (rulerTarget) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      scrubPendingRef.current = { frame: rulerTarget.frame, x: e.clientX, y: e.clientY };
-      isScrubbingRef.current = false;
+      if (isMobileTimesheetLayout && e.pointerType === 'touch') {
+        pendingTapRef.current = {
+          frame: rulerTarget.frame,
+          trackId: null,
+          pointerType: e.pointerType,
+          x: e.clientX,
+          y: e.clientY,
+        };
+      } else {
+        scrubPendingRef.current = { frame: rulerTarget.frame, x: e.clientX, y: e.clientY };
+        isScrubbingRef.current = false;
+      }
       return;
     }
 
@@ -1500,7 +1599,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (target) {
       if (e.pointerType === 'touch') {
-        if (target.frame === currentFrame) {
+        if (!isMobileTimesheetLayout && target.frame === currentFrame) {
           scrubPendingRef.current = { frame: target.frame, x: e.clientX, y: e.clientY };
           isScrubbingRef.current = false;
         }
@@ -1880,7 +1979,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerLeave}
-        style={{ touchAction: touchActionValue }}
+        style={{
+          touchAction: touchActionValue,
+          ...(isMobileTimesheetLayout
+            ? { position: 'absolute', top: 0, right: MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET, bottom: 0, left: 0 }
+            : {}),
+        }}
       >
         <div
           className={isMobileTimesheetLayout ? 'flex flex-col' : 'flex'}
@@ -1962,6 +2066,43 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           )}
         </div>
       </div>
+      {isMobileTimesheetLayout && (
+        <div
+          ref={mobileScrubRailRef}
+          className="absolute top-0 bottom-0 right-0 z-20 overflow-hidden rounded-l-xl border-l border-gray-300 bg-white/92 shadow-[-4px_0_12px_rgba(15,23,42,0.08)]"
+          style={{ width: `${MOBILE_SCRUB_RAIL_WIDTH}px`, touchAction: 'none', right: `${MOBILE_SCRUB_RAIL_OFFSET}px` }}
+          onPointerDown={handleMobileRailPointerDown}
+          onPointerMove={handleMobileRailPointerMove}
+          onPointerUp={handleMobileRailPointerUp}
+          onPointerCancel={handleMobileRailPointerCancel}
+        >
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-white via-white/90 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white via-white/90 to-transparent" />
+            {mobileRailTicks.map((tick) => (
+              <div
+                key={tick.frame}
+                className={`absolute left-2 right-2 ${tick.isSecond ? 'border-t-2 border-gray-500' : tick.isHalfSecond ? 'border-t border-gray-400' : 'border-t border-gray-200'}`}
+                style={{ top: `${tick.top}px` }}
+              />
+            ))}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full bg-gray-800 px-2 py-1 text-[10px] font-medium text-white shadow-sm">
+              {formatTimecodeOneBased(currentFrame, fps)}
+            </div>
+            {currentFrameRailOffset !== null && currentFrameRailOffset >= -8 && currentFrameRailOffset <= viewportHeight + 8 && (
+              <div
+                className="absolute left-1 right-1 -translate-y-1/2"
+                style={{ top: `${currentFrameRailOffset}px` }}
+              >
+                <div className={`flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm ${isMobileScrubRailActive ? 'border-red-300 bg-red-500 text-white' : 'border-red-200 bg-white text-red-600'}`}>
+                  <span className="mr-1 h-2 w-2 rounded-full bg-current" />
+                  {currentFrame + 1}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {isMouseSelectionCursorVisible && (
         <div className="pointer-events-none absolute inset-0 z-50">
           <div
