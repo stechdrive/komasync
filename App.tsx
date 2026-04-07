@@ -85,6 +85,7 @@ const MIC_CONSTRAINTS: MediaStreamConstraints = {
 const clampSheetZoom = (value: number): number => Math.min(MAX_SHEET_ZOOM, Math.max(MIN_SHEET_ZOOM, value));
 const normalizeSheetZoom = (value: number): number => Math.round(clampSheetZoom(value) * 100) / 100;
 const clampInputGainDb = (value: number): number => Math.min(MAX_INPUT_GAIN_DB, Math.max(MIN_INPUT_GAIN_DB, value));
+const WAVEFORM_REFERENCE_QUANTILE = 0.98;
 
 // Use a factory function to ensure fresh references on reset
 const createInitialTracks = (): Track[] => [
@@ -94,6 +95,7 @@ const createInitialTracks = (): Track[] => [
     color: 'blue',
     audioBuffer: null,
     frames: [],
+    waveformReferenceMax: 0,
     speechOverrides: [],
     isVisible: true,
     isMuted: false,
@@ -104,6 +106,7 @@ const createInitialTracks = (): Track[] => [
     color: 'red',
     audioBuffer: null,
     frames: [],
+    waveformReferenceMax: 0,
     speechOverrides: [],
     isVisible: true,
     isMuted: false,
@@ -114,6 +117,7 @@ const createInitialTracks = (): Track[] => [
     color: 'green',
     audioBuffer: null,
     frames: [],
+    waveformReferenceMax: 0,
     speechOverrides: [],
     isVisible: true,
     isMuted: false,
@@ -501,7 +505,23 @@ export default function App() {
     [getFrameCountFromBuffer]
   );
 
-  const scheduleVadAnalysis = useCallback((trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning) => {
+  const getWaveformReferenceMax = useCallback((frames: FrameData[]): number => {
+    // 編集後に残った区間だけで波形が急に肥大化しないよう、録音全体の代表値を保持する。
+    const volumes = frames
+      .map((frame) => frame.volume ?? 0)
+      .filter((volume) => volume > 0)
+      .sort((a, b) => a - b);
+    if (volumes.length === 0) return 0;
+    const index = Math.min(volumes.length - 1, Math.floor((volumes.length - 1) * WAVEFORM_REFERENCE_QUANTILE));
+    return volumes[index] ?? volumes[volumes.length - 1] ?? 0;
+  }, []);
+
+  const scheduleVadAnalysis = useCallback((
+    trackId: string,
+    audioBuffer: AudioBuffer,
+    tuning: VadTuning,
+    options?: { refreshWaveformReference?: boolean }
+  ) => {
     const bufferRef = audioBuffer;
     const tuningToken = vadReprocessIdRef.current;
     const requestId = (vadRequestIdRef.current.get(trackId) ?? 0) + 1;
@@ -571,6 +591,9 @@ export default function App() {
             return {
               ...track,
               frames,
+              waveformReferenceMax: options?.refreshWaveformReference
+                ? getWaveformReferenceMax(frames)
+                : track.waveformReferenceMax,
               speechOverrides: resizeSpeechOverrides(track.speechOverrides, frames.length),
             };
           })
@@ -579,7 +602,7 @@ export default function App() {
       .catch((error) => {
         console.warn('VAD解析に失敗しました。', error);
       });
-  }, []);
+  }, [getWaveformReferenceMax]);
 
   // Re-process when VAD settings change
   useEffect(() => {
@@ -1430,8 +1453,9 @@ export default function App() {
         audioBuffer: finalBuffer,
         frames: createEmptyFrames(finalBuffer),
         speechOverrides: nextOverrides,
+        waveformReferenceMax: track?.waveformReferenceMax ?? 0,
       });
-      scheduleVadAnalysis(trackId, finalBuffer, tuning);
+      scheduleVadAnalysis(trackId, finalBuffer, tuning, { refreshWaveformReference: true });
 
       setRecordingState(RecordingState.IDLE);
       // Do not reset current frame to 0, let user stay where they are or seek manually
