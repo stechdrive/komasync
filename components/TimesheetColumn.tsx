@@ -27,6 +27,8 @@ type TimesheetColumnProps = {
   fps: number;
   tracks: TrackRenderData[];
   cursorRow: number;
+  isCurrentColumn: boolean;
+  isCurrentSheet: boolean;
   selectionSlice: SelectionSlice | null;
   endBoundaryRow: number | null;
   pastEndStartRow: number | null;
@@ -83,6 +85,8 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   fps,
   tracks,
   cursorRow,
+  isCurrentColumn,
+  isCurrentSheet,
   selectionSlice,
   endBoundaryRow,
   pastEndStartRow,
@@ -165,6 +169,9 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
   const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
   const vadBorderWidth = clamp(Math.round(rowHeight * 0.08), 1, 2);
+  const currentColumnOutline = isCurrentColumn ? '0 0 0 2px rgba(239, 68, 68, 0.75) inset' : undefined;
+  const currentSheetGlow = isCurrentSheet ? 'inset 0 0 0 1px rgba(251, 191, 36, 0.35)' : undefined;
+  const columnAccentShadow = [currentSheetGlow, currentColumnOutline].filter(Boolean).join(', ') || undefined;
 
   useEffect(() => {
     if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
@@ -232,9 +239,14 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
       style={{
         width: `${columnWidth}px`,
         height: `${columnHeight}px`,
+        background: isCurrentSheet ? 'linear-gradient(180deg, rgba(255, 251, 235, 0.9), rgba(255, 255, 255, 0.96))' : undefined,
+        boxShadow: [columnBoundary.style?.boxShadow, columnAccentShadow].filter(Boolean).join(', ') || undefined,
         ...(columnBoundary.style ?? {}),
       }}
     >
+      {isCurrentColumn && (
+        <div className="pointer-events-none absolute top-0 left-0 right-0 z-50 h-1 bg-red-400" />
+      )}
       <div className="absolute inset-0 pointer-events-none z-10">
         {tracks.map((track, index) => (
           <canvas
@@ -438,6 +450,8 @@ const areTimesheetColumnPropsEqual = (prev: TimesheetColumnProps, next: Timeshee
   if (prev.columnIndex !== next.columnIndex) return false;
   if (prev.startFrame !== next.startFrame) return false;
   if (prev.cursorRow !== next.cursorRow) return false;
+  if (prev.isCurrentColumn !== next.isCurrentColumn) return false;
+  if (prev.isCurrentSheet !== next.isCurrentSheet) return false;
   if (prev.endBoundaryRow !== next.endBoundaryRow) return false;
   if (prev.pastEndStartRow !== next.pastEndStartRow) return false;
   if (prev.layoutKey !== next.layoutKey) return false;

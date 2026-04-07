@@ -553,6 +553,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const rightSpacerWidth = Math.max(0, totalColumns - renderEndColumn - 1) * columnWidth;
   const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
   const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
+  const currentColumnIndex = Math.max(0, Math.floor(currentFrame / framesPerColumn));
+  const currentSheetIndex = Math.floor(currentColumnIndex / COLUMNS_PER_SHEET);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (suppressBackdropClickRef.current) {
@@ -1796,6 +1798,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 fps={fps}
                 tracks={trackRenderData}
                 cursorRow={cursorRow}
+                isCurrentColumn={columnIndex === currentColumnIndex}
+                isCurrentSheet={Math.floor(columnIndex / COLUMNS_PER_SHEET) === currentSheetIndex}
                 selectionSlice={selectionSlice}
                 endBoundaryRow={endBoundaryRow}
                 pastEndStartRow={pastEndStartRow}
