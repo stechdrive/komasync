@@ -1164,6 +1164,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       updateSelectionAtPoint(effectiveX, effectiveY, pointerType);
     }
 
+    if (pointerType === 'mouse') {
+      autoScrollRef.current.rafId = null;
+      updateWrapCue(null);
+      return;
+    }
+
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
   }, [getEdgeScrollSpeed, getMouseSelectionTarget, rowHeight, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
 
