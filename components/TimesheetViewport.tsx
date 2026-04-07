@@ -910,11 +910,21 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       let nextX = clamp(contentX, 0, maxContentX);
       let nextY = contentY;
 
-      while (nextY < 0 && nextX > 0) {
+      while (nextY < 0) {
+        const currentColumnIndex = clamp(Math.floor(nextX / columnWidth), 0, totalColumns - 1);
+        if (currentColumnIndex <= 0) {
+          nextY = 0;
+          break;
+        }
         nextY += columnHeight;
         nextX = Math.max(0, nextX - columnWidth);
       }
-      while (nextY >= columnHeight && nextX < maxContentX) {
+      while (nextY >= columnHeight) {
+        const currentColumnIndex = clamp(Math.floor(nextX / columnWidth), 0, totalColumns - 1);
+        if (currentColumnIndex >= totalColumns - 1) {
+          nextY = maxContentY;
+          break;
+        }
         nextY -= columnHeight;
         nextX = Math.min(maxContentX, nextX + columnWidth);
       }
