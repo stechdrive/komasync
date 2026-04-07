@@ -39,6 +39,7 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
 const LONG_PRESS_MENU_MS = 700;
 const EDGE_SCROLL_SIZE = 32;
 const EDGE_SCROLL_MAX_SPEED = 20;
+const EDGE_SCROLL_MAX_SPEED_MOUSE = 6;
 const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
@@ -173,6 +174,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const allowSingleFingerPan = !isIOS && !isZoomed;
   const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
   const pointerEdgeEpsilon = isIOS ? 0 : 1;
+  const getEdgeScrollSpeed = useCallback((distance: number, pointerType: string) => {
+    const ratio = clamp(distance / EDGE_SCROLL_SIZE, 0, 1);
+    if (pointerType === 'mouse') {
+      // マウスの仮想カーソルは行き過ぎやすいので、端ではゆっくり立ち上げる。
+      return ratio * ratio * EDGE_SCROLL_MAX_SPEED_MOUSE;
+    }
+    return ratio * EDGE_SCROLL_MAX_SPEED;
+  }, []);
 
   useEffect(() => {
     selectionRangeRef.current = selection;
@@ -1046,18 +1055,18 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (pointerX < rect.left + edge) {
       dirX = -1;
-      speedX = ((rect.left + edge - pointerX) / edge) * EDGE_SCROLL_MAX_SPEED;
+      speedX = getEdgeScrollSpeed(rect.left + edge - pointerX, pointerType);
     } else if (pointerX > rect.right - edge) {
       dirX = 1;
-      speedX = ((pointerX - (rect.right - edge)) / edge) * EDGE_SCROLL_MAX_SPEED;
+      speedX = getEdgeScrollSpeed(pointerX - (rect.right - edge), pointerType);
     }
 
     if (pointerY < rect.top + edge) {
       dirY = -1;
-      speedY = ((rect.top + edge - pointerY) / edge) * EDGE_SCROLL_MAX_SPEED;
+      speedY = getEdgeScrollSpeed(rect.top + edge - pointerY, pointerType);
     } else if (pointerY > rect.bottom - edge) {
       dirY = 1;
-      speedY = ((pointerY - (rect.bottom - edge)) / edge) * EDGE_SCROLL_MAX_SPEED;
+      speedY = getEdgeScrollSpeed(pointerY - (rect.bottom - edge), pointerType);
     }
 
     if (dirX === 0 && dirY === 0) {
@@ -1146,7 +1155,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
-  }, [getMouseSelectionTarget, rowHeight, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
+  }, [getEdgeScrollSpeed, getMouseSelectionTarget, rowHeight, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
 
   const startAutoScroll = useCallback((clientX: number, clientY: number, pointerType: string) => {
     autoScrollRef.current.pointerX = clientX;
