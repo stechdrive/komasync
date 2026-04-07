@@ -114,9 +114,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const panPointerIdRef = useRef<number | null>(null);
   const mouseSelectionCursorStateRef = useRef<{
-    clientX: number;
-    clientY: number;
-    bias: 'top' | 'bottom' | null;
+    contentX: number;
+    contentY: number;
+    lastClientX: number;
+    lastClientY: number;
   } | null>(null);
   const mouseSelectionCursorRef = useRef<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -276,9 +277,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (viewportHeight <= 0) return 0;
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
-  const selectionCursorEdgeOffset = useMemo(() => {
-    return Math.min(EDGE_SCROLL_OFFSET, Math.max(2, rowHeight * 0.4));
-  }, [rowHeight]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -892,35 +890,85 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     setWrapCue(next);
   }, []);
 
-  const updateMouseSelectionCursor = useCallback(
-    (clientX: number, clientY: number, bias?: 'top' | 'bottom' | null) => {
-      const nextBias = bias ?? mouseSelectionCursorStateRef.current?.bias ?? null;
-      mouseSelectionCursorStateRef.current = { clientX, clientY, bias: nextBias };
+  const normalizeMouseSelectionCursor = useCallback(
+    (contentX: number, contentY: number) => {
+      if (columnWidth <= 0 || columnHeight <= 0) return { contentX: 0, contentY: 0 };
 
-      const rect = rectRef.current;
-      const cursorEl = mouseSelectionCursorRef.current;
-      if (!rect || !cursorEl) return;
+      const maxContentX = Math.max(0, totalColumns * columnWidth - 1);
+      const maxContentY = Math.max(0, columnHeight - 1);
+      let nextX = clamp(contentX, 0, maxContentX);
+      let nextY = contentY;
 
-      const displayX = clamp(clientX, rect.left + 4, rect.right - 4);
-      const biasedY =
-        nextBias === 'top'
-          ? rect.top + selectionCursorEdgeOffset
-          : nextBias === 'bottom'
-            ? rect.bottom - selectionCursorEdgeOffset
-            : clientY;
-      const displayY = clamp(biasedY, rect.top + 4, rect.bottom - 4);
+      while (nextY < 0 && nextX > 0) {
+        nextY += columnHeight;
+        nextX = Math.max(0, nextX - columnWidth);
+      }
+      while (nextY >= columnHeight && nextX < maxContentX) {
+        nextY -= columnHeight;
+        nextX = Math.min(maxContentX, nextX + columnWidth);
+      }
 
-      cursorEl.style.left = `${displayX - rect.left}px`;
-      cursorEl.style.top = `${displayY - rect.top}px`;
+      nextY = clamp(nextY, 0, maxContentY);
+      return { contentX: nextX, contentY: nextY };
     },
-    [selectionCursorEdgeOffset]
+    [columnHeight, columnWidth, totalColumns]
+  );
+
+  const updateMouseSelectionCursor = useCallback((contentX: number, contentY: number, lastClientX: number, lastClientY: number) => {
+    const normalized = normalizeMouseSelectionCursor(contentX, contentY);
+    mouseSelectionCursorStateRef.current = {
+      contentX: normalized.contentX,
+      contentY: normalized.contentY,
+      lastClientX,
+      lastClientY,
+    };
+
+    const rect = rectRef.current;
+    const scrollEl = scrollRef.current;
+    const cursorEl = mouseSelectionCursorRef.current;
+    if (!rect || !scrollEl || !cursorEl) return;
+
+    const displayX = clamp(normalized.contentX - scrollEl.scrollLeft + rect.left, rect.left + 4, rect.right - 4);
+    const displayY = clamp(normalized.contentY - scrollEl.scrollTop + rect.top, rect.top + 4, rect.bottom - 4);
+
+    cursorEl.style.left = `${displayX - rect.left}px`;
+    cursorEl.style.top = `${displayY - rect.top}px`;
+  }, [normalizeMouseSelectionCursor]);
+
+  const getMouseSelectionTarget = useCallback(
+    (contentX: number, contentY: number): { frame: number; trackId: string } | null => {
+      if (columnWidth <= 0 || rowHeight <= 0 || tracks.length <= 0 || columnHeight <= 0) return null;
+
+      const normalized = normalizeMouseSelectionCursor(contentX, contentY);
+      const columnIndex = clamp(Math.floor(normalized.contentX / columnWidth), 0, totalColumns - 1);
+      const rowIndex = clamp(Math.floor(normalized.contentY / rowHeight), 0, framesPerColumn - 1);
+      const columnX = normalized.contentX - columnIndex * columnWidth;
+      const trackAreaWidth = columnWidth - rulerWidth * 2;
+      if (trackAreaWidth <= 0) return null;
+
+      const trackX = clamp(columnX - rulerWidth, 0, Math.max(0, trackAreaWidth - 1));
+      const trackColumnWidth = trackAreaWidth / tracks.length;
+      if (trackColumnWidth <= 0) return null;
+
+      const trackIndex = clamp(Math.floor(trackX / trackColumnWidth), 0, tracks.length - 1);
+      const frame = columnIndex * framesPerColumn + rowIndex;
+      const trackId = tracks[trackIndex]?.id;
+      if (!trackId) return null;
+      return { frame, trackId };
+    },
+    [columnHeight, columnWidth, framesPerColumn, normalizeMouseSelectionCursor, rowHeight, rulerWidth, totalColumns, tracks]
   );
 
   const startMouseSelectionCursor = useCallback(
     (clientX: number, clientY: number) => {
-      mouseSelectionCursorStateRef.current = { clientX, clientY, bias: null };
+      const rect = rectRef.current;
+      const scrollEl = scrollRef.current;
+      if (!rect || !scrollEl) return;
+
+      const contentX = clientX - rect.left + scrollEl.scrollLeft;
+      const contentY = clientY - rect.top + scrollEl.scrollTop;
       setIsMouseSelectionCursorVisible(true);
-      updateMouseSelectionCursor(clientX, clientY, null);
+      updateMouseSelectionCursor(contentX, contentY, clientX, clientY);
     },
     [updateMouseSelectionCursor]
   );
@@ -935,15 +983,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const current = mouseSelectionCursorStateRef.current;
       if (!current) return;
 
-      let nextBias = current.bias;
-      const rect = rectRef.current;
-      const releaseMargin = EDGE_SCROLL_SIZE * 0.75;
-      if (rect) {
-        if (nextBias === 'top' && clientY > rect.top + releaseMargin) nextBias = null;
-        if (nextBias === 'bottom' && clientY < rect.bottom - releaseMargin) nextBias = null;
-      }
-
-      updateMouseSelectionCursor(clientX, clientY, nextBias);
+      const dx = clientX - current.lastClientX;
+      const dy = clientY - current.lastClientY;
+      updateMouseSelectionCursor(current.contentX + dx, current.contentY + dy, clientX, clientY);
     },
     [updateMouseSelectionCursor]
   );
@@ -951,7 +993,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   useEffect(() => {
     const current = mouseSelectionCursorStateRef.current;
     if (!isMouseSelectionCursorVisible || !current) return;
-    updateMouseSelectionCursor(current.clientX, current.clientY, current.bias);
+    updateMouseSelectionCursor(current.contentX, current.contentY, current.lastClientX, current.lastClientY);
   }, [isMouseSelectionCursorVisible, scrollLeft, updateMouseSelectionCursor]);
 
   const updateSelectionAtPoint = useCallback(
@@ -1068,49 +1110,41 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
     updateWrapCue(cue);
 
-    const currentCursor = mouseSelectionCursorStateRef.current;
-    let selectionBias = currentCursor?.bias ?? null;
     if (pointerType === 'mouse') {
+      const currentCursor = mouseSelectionCursorStateRef.current;
+      if (currentCursor) {
+        updateMouseSelectionCursor(
+          currentCursor.contentX + dirX * speedX,
+          currentCursor.contentY + dirY * speedY,
+          currentCursor.lastClientX,
+          currentCursor.lastClientY
+        );
+        const target = getMouseSelectionTarget(currentCursor.contentX + dirX * speedX, currentCursor.contentY + dirY * speedY);
+        if (selectionAnchorRef.current !== null && target) {
+          const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
+          selectionRangeRef.current = range;
+          onSelectionChangeRef.current?.(range);
+        }
+      }
+    } else if (framesPerColumn > 0 && rowHeight > 0) {
+      const edgeOffset = Math.min(EDGE_SCROLL_OFFSET, Math.max(2, rowHeight * 0.4));
+      let effectiveX = pointerX;
+      let effectiveY = pointerY;
+      if (dirX !== 0) {
+        effectiveX = dirX > 0 ? rect.right - edgeOffset : rect.left + edgeOffset;
+      }
       if (wrapDirection === 'down') {
-        selectionBias = 'top';
+        effectiveY = rect.top + edgeOffset;
       } else if (wrapDirection === 'up') {
-        selectionBias = 'bottom';
+        effectiveY = rect.bottom - edgeOffset;
+      } else if (dirY !== 0) {
+        effectiveY = dirY > 0 ? rect.bottom - edgeOffset : rect.top + edgeOffset;
       }
-    }
-
-    const edgeOffset = selectionCursorEdgeOffset;
-    let effectiveX = pointerX;
-    let effectiveY = pointerY;
-    if (dirX !== 0) {
-      effectiveX = dirX > 0 ? rect.right - edgeOffset : rect.left + edgeOffset;
-    }
-    if (pointerType === 'mouse' && selectionBias === 'top' && dirY > 0) {
-      effectiveY = rect.top + edgeOffset;
-    } else if (pointerType === 'mouse' && selectionBias === 'bottom' && dirY < 0) {
-      effectiveY = rect.bottom - edgeOffset;
-    } else if (wrapDirection === 'down') {
-      effectiveY = rect.top + edgeOffset;
-    } else if (wrapDirection === 'up') {
-      effectiveY = rect.bottom - edgeOffset;
-    } else if (dirY !== 0) {
-      effectiveY = dirY > 0 ? rect.bottom - edgeOffset : rect.top + edgeOffset;
-    }
-
-    if (pointerType === 'mouse' && currentCursor) {
-      updateMouseSelectionCursor(pointerX, pointerY, selectionBias);
-      const cursorEl = mouseSelectionCursorRef.current;
-      if (cursorEl) {
-        cursorEl.style.left = `${clamp(effectiveX, rect.left + 4, rect.right - 4) - rect.left}px`;
-        cursorEl.style.top = `${clamp(effectiveY, rect.top + 4, rect.bottom - 4) - rect.top}px`;
-      }
-    }
-
-    if (framesPerColumn > 0 && rowHeight > 0) {
       updateSelectionAtPoint(effectiveX, effectiveY, pointerType);
     }
 
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
-  }, [rowHeight, selectionCursorEdgeOffset, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
+  }, [getMouseSelectionTarget, rowHeight, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
 
   const startAutoScroll = useCallback((clientX: number, clientY: number, pointerType: string) => {
     autoScrollRef.current.pointerX = clientX;
@@ -1523,18 +1557,17 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (isSelectingRef.current) {
       if (e.pointerType === 'mouse') {
         syncMouseSelectionCursorToPointer(e.clientX, e.clientY);
+        const currentCursor = mouseSelectionCursorStateRef.current;
+        const target =
+          currentCursor ? getMouseSelectionTarget(currentCursor.contentX, currentCursor.contentY) : null;
+        if (!target || selectionAnchorRef.current === null) return;
+        const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
+        selectionRangeRef.current = range;
+        onSelectionChange?.(range);
+        startAutoScroll(e.clientX, e.clientY, e.pointerType);
+        return;
       }
-      let selectionClientY = e.clientY;
-      if (e.pointerType === 'mouse') {
-        const bias = mouseSelectionCursorStateRef.current?.bias;
-        const rect = rectRef.current;
-        if (rect && bias === 'top') {
-          selectionClientY = rect.top + selectionCursorEdgeOffset;
-        } else if (rect && bias === 'bottom') {
-          selectionClientY = rect.bottom - selectionCursorEdgeOffset;
-        }
-      }
-      const target = getTrackAtPoint(e.clientX, selectionClientY);
+      const target = getTrackAtPoint(e.clientX, e.clientY);
       if (!target || selectionAnchorRef.current === null) return;
       if (e.pointerType === 'touch') {
         e.preventDefault();
@@ -1580,7 +1613,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const initialRange = { startFrame: pending.frame, endFrame: pending.frame };
     selectionRangeRef.current = initialRange;
     onSelectionChange?.(initialRange);
-    const target = getTrackAtPoint(e.clientX, e.clientY);
+    const currentCursor = mouseSelectionCursorStateRef.current;
+    const target = currentCursor ? getMouseSelectionTarget(currentCursor.contentX, currentCursor.contentY) : getTrackAtPoint(e.clientX, e.clientY);
     if (target) {
       const nextRange = { startFrame: pending.frame, endFrame: target.frame };
       selectionRangeRef.current = nextRange;
