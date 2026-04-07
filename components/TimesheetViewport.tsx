@@ -113,9 +113,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const panPointerIdRef = useRef<number | null>(null);
+  const mouseSelectionCursorStateRef = useRef<{
+    clientX: number;
+    clientY: number;
+    bias: 'top' | 'bottom' | null;
+  } | null>(null);
+  const mouseSelectionCursorRef = useRef<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [isMouseSelectionCursorVisible, setIsMouseSelectionCursorVisible] = useState(false);
   const scrollLeftRef = useRef(0);
   const scrollLeftRafRef = useRef<number | null>(null);
   const scrollLeftFlushTimerRef = useRef<number | null>(null);
@@ -269,6 +276,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (viewportHeight <= 0) return 0;
     return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
   }, [framesPerColumn, viewportHeight, zoom]);
+  const selectionCursorEdgeOffset = useMemo(() => {
+    return Math.min(EDGE_SCROLL_OFFSET, Math.max(2, rowHeight * 0.4));
+  }, [rowHeight]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -882,6 +892,68 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     setWrapCue(next);
   }, []);
 
+  const updateMouseSelectionCursor = useCallback(
+    (clientX: number, clientY: number, bias?: 'top' | 'bottom' | null) => {
+      const nextBias = bias ?? mouseSelectionCursorStateRef.current?.bias ?? null;
+      mouseSelectionCursorStateRef.current = { clientX, clientY, bias: nextBias };
+
+      const rect = rectRef.current;
+      const cursorEl = mouseSelectionCursorRef.current;
+      if (!rect || !cursorEl) return;
+
+      const displayX = clamp(clientX, rect.left + 4, rect.right - 4);
+      const biasedY =
+        nextBias === 'top'
+          ? rect.top + selectionCursorEdgeOffset
+          : nextBias === 'bottom'
+            ? rect.bottom - selectionCursorEdgeOffset
+            : clientY;
+      const displayY = clamp(biasedY, rect.top + 4, rect.bottom - 4);
+
+      cursorEl.style.left = `${displayX - rect.left}px`;
+      cursorEl.style.top = `${displayY - rect.top}px`;
+    },
+    [selectionCursorEdgeOffset]
+  );
+
+  const startMouseSelectionCursor = useCallback(
+    (clientX: number, clientY: number) => {
+      mouseSelectionCursorStateRef.current = { clientX, clientY, bias: null };
+      setIsMouseSelectionCursorVisible(true);
+      updateMouseSelectionCursor(clientX, clientY, null);
+    },
+    [updateMouseSelectionCursor]
+  );
+
+  const stopMouseSelectionCursor = useCallback(() => {
+    mouseSelectionCursorStateRef.current = null;
+    setIsMouseSelectionCursorVisible(false);
+  }, []);
+
+  const syncMouseSelectionCursorToPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const current = mouseSelectionCursorStateRef.current;
+      if (!current) return;
+
+      let nextBias = current.bias;
+      const rect = rectRef.current;
+      const releaseMargin = EDGE_SCROLL_SIZE * 0.75;
+      if (rect) {
+        if (nextBias === 'top' && clientY > rect.top + releaseMargin) nextBias = null;
+        if (nextBias === 'bottom' && clientY < rect.bottom - releaseMargin) nextBias = null;
+      }
+
+      updateMouseSelectionCursor(clientX, clientY, nextBias);
+    },
+    [updateMouseSelectionCursor]
+  );
+
+  useEffect(() => {
+    const current = mouseSelectionCursorStateRef.current;
+    if (!isMouseSelectionCursorVisible || !current) return;
+    updateMouseSelectionCursor(current.clientX, current.clientY, current.bias);
+  }, [isMouseSelectionCursorVisible, scrollLeft, updateMouseSelectionCursor]);
+
   const updateSelectionAtPoint = useCallback(
     (clientX: number, clientY: number, pointerType: string) => {
       if (selectionAnchorRef.current === null) return;
@@ -996,13 +1068,27 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
     updateWrapCue(cue);
 
-    const edgeOffset = Math.min(EDGE_SCROLL_OFFSET, Math.max(2, rowHeight * 0.4));
+    const currentCursor = mouseSelectionCursorStateRef.current;
+    let selectionBias = currentCursor?.bias ?? null;
+    if (pointerType === 'mouse') {
+      if (wrapDirection === 'down') {
+        selectionBias = 'top';
+      } else if (wrapDirection === 'up') {
+        selectionBias = 'bottom';
+      }
+    }
+
+    const edgeOffset = selectionCursorEdgeOffset;
     let effectiveX = pointerX;
     let effectiveY = pointerY;
     if (dirX !== 0) {
       effectiveX = dirX > 0 ? rect.right - edgeOffset : rect.left + edgeOffset;
     }
-    if (wrapDirection === 'down') {
+    if (pointerType === 'mouse' && selectionBias === 'top' && dirY > 0) {
+      effectiveY = rect.top + edgeOffset;
+    } else if (pointerType === 'mouse' && selectionBias === 'bottom' && dirY < 0) {
+      effectiveY = rect.bottom - edgeOffset;
+    } else if (wrapDirection === 'down') {
       effectiveY = rect.top + edgeOffset;
     } else if (wrapDirection === 'up') {
       effectiveY = rect.bottom - edgeOffset;
@@ -1010,12 +1096,21 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       effectiveY = dirY > 0 ? rect.bottom - edgeOffset : rect.top + edgeOffset;
     }
 
+    if (pointerType === 'mouse' && currentCursor) {
+      updateMouseSelectionCursor(pointerX, pointerY, selectionBias);
+      const cursorEl = mouseSelectionCursorRef.current;
+      if (cursorEl) {
+        cursorEl.style.left = `${clamp(effectiveX, rect.left + 4, rect.right - 4) - rect.left}px`;
+        cursorEl.style.top = `${clamp(effectiveY, rect.top + 4, rect.bottom - 4) - rect.top}px`;
+      }
+    }
+
     if (framesPerColumn > 0 && rowHeight > 0) {
       updateSelectionAtPoint(effectiveX, effectiveY, pointerType);
     }
 
     autoScrollRef.current.rafId = requestAnimationFrame(runAutoScroll);
-  }, [stopAutoScroll, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
+  }, [rowHeight, selectionCursorEdgeOffset, stopAutoScroll, updateMouseSelectionCursor, updateRectRef, updateSelectionAtPoint, updateWrapCue]);
 
   const startAutoScroll = useCallback((clientX: number, clientY: number, pointerType: string) => {
     autoScrollRef.current.pointerX = clientX;
@@ -1084,6 +1179,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
+    stopMouseSelectionCursor();
     if (wasSelecting) {
       suppressBackdropClickRef.current = true;
       onSelectionCommit?.();
@@ -1111,6 +1207,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     scrubPendingRef.current = null;
     pendingTapRef.current = null;
     selectionAnchorRef.current = null;
+    stopMouseSelectionCursor();
     clearLongPressTimer();
     longPressPointRef.current = null;
   };
@@ -1424,7 +1521,20 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     if (isSelectingRef.current) {
-      const target = getTrackAtPoint(e.clientX, e.clientY);
+      if (e.pointerType === 'mouse') {
+        syncMouseSelectionCursorToPointer(e.clientX, e.clientY);
+      }
+      let selectionClientY = e.clientY;
+      if (e.pointerType === 'mouse') {
+        const bias = mouseSelectionCursorStateRef.current?.bias;
+        const rect = rectRef.current;
+        if (rect && bias === 'top') {
+          selectionClientY = rect.top + selectionCursorEdgeOffset;
+        } else if (rect && bias === 'bottom') {
+          selectionClientY = rect.bottom - selectionCursorEdgeOffset;
+        }
+      }
+      const target = getTrackAtPoint(e.clientX, selectionClientY);
       if (!target || selectionAnchorRef.current === null) return;
       if (e.pointerType === 'touch') {
         e.preventDefault();
@@ -1465,6 +1575,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     selectionAnchorRef.current = pending.frame;
     isSelectingRef.current = true;
+    startMouseSelectionCursor(e.clientX, e.clientY);
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     const initialRange = { startFrame: pending.frame, endFrame: pending.frame };
     selectionRangeRef.current = initialRange;
@@ -1475,6 +1586,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       selectionRangeRef.current = nextRange;
       onSelectionChange?.(nextRange);
     }
+    startAutoScroll(e.clientX, e.clientY, e.pointerType);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -1499,6 +1611,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       stopPan();
       pendingTapRef.current = null;
       selectionAnchorRef.current = null;
+      stopMouseSelectionCursor();
       return;
     }
 
@@ -1511,6 +1624,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       scrubPendingRef.current = null;
       pendingTapRef.current = null;
       selectionAnchorRef.current = null;
+      stopMouseSelectionCursor();
       return;
     }
 
@@ -1520,6 +1634,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
       stopAutoScroll();
+      stopMouseSelectionCursor();
       onSelectionCommit?.();
       return;
     }
@@ -1539,6 +1654,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
     if (!pending) {
       selectionAnchorRef.current = null;
+      stopMouseSelectionCursor();
       return;
     }
 
@@ -1562,6 +1678,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     pendingTapRef.current = null;
     selectionAnchorRef.current = null;
+    stopMouseSelectionCursor();
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -1590,7 +1707,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     <div className="relative h-full w-full bg-gray-100 select-none">
       <div
         ref={scrollRef}
-        className="h-full w-full overflow-x-auto overflow-y-auto snap-x snap-proximity overscroll-x-contain overscroll-y-contain cursor-default"
+        className={`h-full w-full overflow-x-auto overflow-y-auto snap-x snap-proximity overscroll-x-contain overscroll-y-contain ${isMouseSelectionCursorVisible ? 'cursor-none' : 'cursor-default'}`}
         onClick={handleBackdropClick}
         onContextMenu={handleContextMenu}
         onPointerDown={handlePointerDown}
@@ -1667,6 +1784,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           )}
         </div>
       </div>
+      {isMouseSelectionCursorVisible && (
+        <div className="pointer-events-none absolute inset-0 z-50">
+          <div
+            ref={mouseSelectionCursorRef}
+            className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-600 bg-white/95 shadow-[0_0_0_2px_rgba(37,99,235,0.18)]"
+          />
+        </div>
+      )}
       {wrapCue === 'up' && (
         <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
           {t('timesheet.wrapUp')}
