@@ -281,6 +281,8 @@ export default function App() {
       ? window.matchMedia('(pointer: coarse)').matches
       : false
   );
+  const [topBarWidth, setTopBarWidth] = useState(0);
+  const showDebug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRanges>([]);
@@ -2533,6 +2535,7 @@ export default function App() {
             setIsHelpOpen(false);
             setMuteMenu(null);
           }}
+          onBarWidthChange={setTopBarWidth}
         />
       }
       bottom={
@@ -2711,6 +2714,44 @@ export default function App() {
         onToggleTrack={toggleTrackMute}
         onClose={handleCloseMuteMenu}
       />
+
+      {showDebug && (
+        <div
+          className="fixed top-0 left-0 z-[9999] max-w-[min(22rem,90vw)] bg-black/85 text-[11px] leading-[1.45] text-green-300 font-mono p-2 rounded-br-lg pointer-events-none"
+          style={{ wordBreak: 'break-all' }}
+        >
+          <div className="font-bold text-yellow-300 mb-1">Debug</div>
+          <div>visualVP.w: {window.visualViewport?.width?.toFixed(1) ?? 'N/A'}</div>
+          <div>innerWidth: {window.innerWidth}</div>
+          <div>DPR: {window.devicePixelRatio}</div>
+          <div>screen: {window.screen?.width}x{window.screen?.height}</div>
+          <div className="mt-1 border-t border-green-800 pt-1">
+            mobileVPWidth: {mobileViewportWidth.toFixed(1)}
+          </div>
+          <div>coarse: {String(isCoarsePointer)}</div>
+          <div>
+            mobile: {String(isMobileUi)} | compact: {String(isMobileCompactUi)} | tight: {String(isMobileTightUi)}
+          </div>
+          <div className="mt-1 border-t border-green-800 pt-1">
+            barWidth: {topBarWidth}
+          </div>
+          <div>
+            compactBar(&lt;720): {String(topBarWidth > 0 && topBarWidth < 720)} | tightBar(&lt;560): {String(topBarWidth > 0 && topBarWidth < 560)}
+          </div>
+          <div className="mt-1 border-t border-green-800 pt-1">
+            --control-size: {typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--control-size').trim() : '?'}
+          </div>
+          <div>
+            --control-icon: {typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--control-icon').trim() : '?'}
+          </div>
+          <div>
+            --record-h: {typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--record-h').trim() : '?'}
+          </div>
+          <div>
+            --ui-sm: {typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--ui-sm').trim() : '?'}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

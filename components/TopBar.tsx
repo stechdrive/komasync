@@ -27,6 +27,7 @@ type TopBarProps = {
   onOpenMuteMenu: (point: { x: number; y: number }) => void;
   onOpenHelp: () => void;
   onOpenMore: () => void;
+  onBarWidthChange?: (width: number) => void;
 };
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -51,6 +52,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenMuteMenu,
   onOpenHelp,
   onOpenMore,
+  onBarWidthChange,
 }) => {
   const hasMuted = mutedCount > 0;
   const { tooltip, getTooltipProps } = useLongPressTooltip();
@@ -65,7 +67,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     if (!rowEl || typeof ResizeObserver === 'undefined') return;
 
     const updateWidth = () => {
-      setBarWidth(Math.max(0, Math.round(rowEl.getBoundingClientRect().width)));
+      const w = Math.max(0, Math.round(rowEl.getBoundingClientRect().width));
+      setBarWidth(w);
+      onBarWidthChange?.(w);
     };
 
     updateWidth();
