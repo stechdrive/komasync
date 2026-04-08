@@ -40,6 +40,7 @@ type TimesheetColumnProps = {
   trackDataKeys: TrackDataKey[];
   trackOrderKey: string;
   activeTrackId: string | null;
+  isMobileLayout: boolean;
   layoutKey: string;
   touchAction: React.CSSProperties['touchAction'];
 };
@@ -96,11 +97,12 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   rowHeight,
   trackMaxVolumes,
   activeTrackId,
+  isMobileLayout,
   touchAction,
 }) => {
   const framesPerColumn = getFramesPerColumn(fps);
   const labelStep = rowHeight >= 11 ? 1 : rowHeight >= 9 ? 6 : rowHeight >= 7 ? 12 : 0;
-  const rulerFontSize = clamp(rowHeight * 0.6, 8, 12);
+  const rulerFontSize = clamp(rowHeight * 0.6, isMobileLayout ? 10 : 8, isMobileLayout ? 13 : 12);
   const columnOffset = (columnIndex % COLUMNS_PER_SHEET) * framesPerColumn;
   const waveCanvasRefs = useRef<Map<string, HTMLCanvasElement | null>>(new Map());
   const trackColumnWidth = useMemo(() => {
@@ -463,6 +465,7 @@ const areTimesheetColumnPropsEqual = (prev: TimesheetColumnProps, next: Timeshee
   if (prev.layoutKey !== next.layoutKey) return false;
   if (prev.trackOrderKey !== next.trackOrderKey) return false;
   if (prev.activeTrackId !== next.activeTrackId) return false;
+  if (prev.isMobileLayout !== next.isMobileLayout) return false;
   if (!areSelectionSlicesEqual(prev.selectionSlices, next.selectionSlices)) return false;
   if (!areTrackDataKeysEqual(prev.trackDataKeys, next.trackDataKeys)) return false;
   if (!areNumberArraysEqual(prev.trackMaxVolumes, next.trackMaxVolumes)) return false;

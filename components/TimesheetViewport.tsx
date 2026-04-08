@@ -363,15 +363,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   const rulerWidth = useMemo(() => {
     const baseWidth = Math.round(columnWidth * 0.1);
-    const minWidth = Math.max(44, Math.round(columnWidth * 0.08));
+    const minWidth = Math.max(isMobileTimesheetLayout ? 52 : 44, Math.round(columnWidth * 0.08));
     const maxWidth = Math.max(64, Math.round(columnWidth * 0.14));
     return clamp(baseWidth, minWidth, maxWidth);
-  }, [columnWidth]);
+  }, [columnWidth, isMobileTimesheetLayout]);
 
   const rowHeight = useMemo(() => {
     if (viewportHeight <= 0) return 0;
-    return Math.max(1, (viewportHeight / framesPerColumn) * zoom);
-  }, [framesPerColumn, viewportHeight, zoom]);
+    const baseHeight = (viewportHeight / framesPerColumn) * zoom;
+    return Math.max(isMobileTimesheetLayout ? 11 : 1, baseHeight);
+  }, [framesPerColumn, isMobileTimesheetLayout, viewportHeight, zoom]);
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
   }, [framesPerColumn, rowHeight]);
@@ -2223,6 +2224,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 trackDataKeys={trackDataKeys}
                 trackOrderKey={trackOrderKey}
                 activeTrackId={activeTrackId}
+                isMobileLayout={isMobileTimesheetLayout}
                 layoutKey={layoutKey}
                 touchAction={touchActionValue}
               />
