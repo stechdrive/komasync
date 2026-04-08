@@ -50,6 +50,7 @@ const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 0;
 const MOBILE_SIDEBAR_WIDTH =
   MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_PLAYHEAD_LANE_GAP + MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET;
+const MOBILE_TARGET_VISIBLE_FRAMES = 48;
 
 const normalizeSelectionRange = (range: SelectionRange): SelectionRange => {
   const startFrame = Math.max(0, Math.floor(Math.min(range.startFrame, range.endFrame)));
@@ -366,11 +367,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const maxWidth = Math.max(64, Math.round(columnWidth * 0.14));
     return clamp(baseWidth, minWidth, maxWidth);
   }, [columnWidth, isMobileTimesheetLayout]);
+  const rightRulerWidth = isMobileTimesheetLayout ? 0 : rulerWidth;
 
   const rowHeight = useMemo(() => {
     if (viewportHeight <= 0) return 0;
     const baseHeight = (viewportHeight / framesPerColumn) * zoom;
-    return Math.max(isMobileTimesheetLayout ? 11 : 1, baseHeight);
+    if (!isMobileTimesheetLayout) return Math.max(1, baseHeight);
+    const mobileTargetHeight = viewportHeight / MOBILE_TARGET_VISIBLE_FRAMES;
+    return Math.max(baseHeight, mobileTargetHeight);
   }, [framesPerColumn, isMobileTimesheetLayout, viewportHeight, zoom]);
   const columnHeight = useMemo(() => {
     return framesPerColumn * rowHeight;
@@ -793,13 +797,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         return getTrackTarget(dom);
       }
 
-      if (tracks.length <= 0 || columnWidth <= rulerWidth * 2) {
+      if (tracks.length <= 0 || columnWidth <= rulerWidth + rightRulerWidth) {
         const dom = document.elementFromPoint(clientX, clientY);
         return getTrackTarget(dom);
       }
 
       const columnX = isMobileTimesheetLayout ? contentX : contentX - columnIndex * columnWidth;
-      const trackAreaWidth = columnWidth - rulerWidth * 2;
+      const trackAreaWidth = columnWidth - rulerWidth - rightRulerWidth;
       if (trackAreaWidth <= 0) {
         const dom = document.elementFromPoint(clientX, clientY);
         return getTrackTarget(dom);
@@ -831,6 +835,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       pointerEdgeEpsilon,
       isMobileTimesheetLayout,
       rowHeight,
+      rightRulerWidth,
       rulerWidth,
       totalColumns,
       tracks,
@@ -902,14 +907,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
       const columnX = isMobileTimesheetLayout ? contentX : contentX - columnIndex * columnWidth;
       const leftRulerEdge = rulerWidth;
-      const rightRulerEdge = columnWidth - rulerWidth;
+      const rightRulerEdge = columnWidth - rightRulerWidth;
       const isInLeftRuler = columnX >= 0 && columnX <= leftRulerEdge;
-      const isInRightRuler = columnX >= rightRulerEdge && columnX <= columnWidth;
+      const isInRightRuler = rightRulerWidth > 0 && columnX >= rightRulerEdge && columnX <= columnWidth;
 
       if (!isInLeftRuler && !isInRightRuler) return null;
       if (
         Math.abs(columnX - leftRulerEdge) <= edgeEpsilon ||
-        Math.abs(columnX - rightRulerEdge) <= edgeEpsilon
+        (rightRulerWidth > 0 && Math.abs(columnX - rightRulerEdge) <= edgeEpsilon)
       ) {
         const dom = document.elementFromPoint(clientX, clientY);
         return getRulerTarget(dom);
@@ -925,6 +930,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       getRulerTarget,
       isMobileTimesheetLayout,
       pointerEdgeEpsilon,
+      rightRulerWidth,
       rowHeight,
       rulerWidth,
       totalColumns,
@@ -1123,7 +1129,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         : normalized.contentY;
       const rowIndex = clamp(Math.floor(rowOffsetY / rowHeight), 0, framesPerColumn - 1);
       const columnX = isMobileTimesheetLayout ? normalized.contentX : normalized.contentX - columnIndex * columnWidth;
-      const trackAreaWidth = columnWidth - rulerWidth * 2;
+      const trackAreaWidth = columnWidth - rulerWidth - rightRulerWidth;
       if (trackAreaWidth <= 0) return null;
 
       const trackX = clamp(columnX - rulerWidth, 0, Math.max(0, trackAreaWidth - 1));
@@ -1136,7 +1142,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (!trackId) return null;
       return { frame, trackId };
     },
-    [columnHeight, columnWidth, framesPerColumn, isMobileTimesheetLayout, normalizeMouseSelectionCursor, rowHeight, rulerWidth, totalColumns, tracks]
+    [columnHeight, columnWidth, framesPerColumn, isMobileTimesheetLayout, normalizeMouseSelectionCursor, rightRulerWidth, rowHeight, rulerWidth, totalColumns, tracks]
   );
 
   const startMouseSelectionCursor = useCallback(
@@ -2218,6 +2224,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 columnWidth={columnWidth}
                 columnHeight={columnHeight}
                 rulerWidth={rulerWidth}
+                rightRulerWidth={rightRulerWidth}
                 rowHeight={rowHeight}
                 trackMaxVolumes={trackMaxVolumes}
                 trackDataKeys={trackDataKeys}

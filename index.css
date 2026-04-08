@@ -28,24 +28,24 @@ body {
   --dock-h: calc(var(--record-h) + 1rem + env(safe-area-inset-bottom));
 }
 
-@media (pointer: coarse), (max-width: 640px) {
+@media (pointer: coarse) and (max-width: 900px), (max-width: 640px) {
   :root {
-    --ui-xs: clamp(15px, 3.8vw, 17px);
-    --ui-sm: clamp(17px, 4.4vw, 20px);
-    --control-size: clamp(50px, 12vw, 60px);
-    --control-icon: clamp(22px, 5vw, 28px);
-    --record-h: clamp(56px, 13vw, 68px);
+    --ui-xs: clamp(16px, 3.8vw, 18px);
+    --ui-sm: clamp(18px, 4.4vw, 21px);
+    --control-size: clamp(52px, 12vw, 60px);
+    --control-icon: clamp(24px, 5vw, 29px);
+    --record-h: clamp(58px, 13vw, 70px);
     --control-wide: clamp(264px, 70vw, 384px);
   }
 }
 
-@media (pointer: coarse) and (max-width: 640px), (max-width: 520px) {
+@media (pointer: coarse) and (max-width: 900px), (max-width: 520px) {
   .mobile-compact-hide {
     display: none !important;
   }
 }
 
-@media (pointer: coarse) and (max-width: 430px), (max-width: 390px) {
+@media (pointer: coarse) and (max-width: 900px), (max-width: 390px) {
   .mobile-tight-hide {
     display: none !important;
   }

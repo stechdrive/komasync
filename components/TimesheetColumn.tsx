@@ -35,6 +35,7 @@ type TimesheetColumnProps = {
   columnWidth: number;
   columnHeight: number;
   rulerWidth: number;
+  rightRulerWidth: number;
   rowHeight: number;
   trackMaxVolumes: number[];
   trackDataKeys: TrackDataKey[];
@@ -94,6 +95,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   columnWidth,
   columnHeight,
   rulerWidth,
+  rightRulerWidth,
   rowHeight,
   trackMaxVolumes,
   activeTrackId,
@@ -107,8 +109,8 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   const waveCanvasRefs = useRef<Map<string, HTMLCanvasElement | null>>(new Map());
   const trackColumnWidth = useMemo(() => {
     const count = Math.max(1, tracks.length);
-    return Math.max(1, (columnWidth - rulerWidth * 2) / count);
-  }, [columnWidth, rulerWidth, tracks.length]);
+    return Math.max(1, (columnWidth - rulerWidth - rightRulerWidth) / count);
+  }, [columnWidth, rightRulerWidth, rulerWidth, tracks.length]);
 
   const speechData = useMemo(() => {
     const rowsByTrack = new Map<string, boolean[]>();
@@ -271,7 +273,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
         style={{
           height: `${columnHeight}px`,
           gridTemplateRows: `repeat(${framesPerColumn}, ${rowHeight}px)`,
-          gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rulerWidth}px`,
+          gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rightRulerWidth}px`,
         }}
       >
         {Array.from({ length: framesPerColumn }).map((_, rowIndex) => {
@@ -365,14 +367,16 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
               })}
 
               {/* 右ルーラー */}
-              <div
-                data-frame-index={globalFrameIndex}
-                data-ruler="right"
-                className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
-                style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction }}
-              >
-                {showFrameLabel || isCurrent ? formatTimecodeOneBased(globalFrameIndex, fps) : ''}
-              </div>
+              {rightRulerWidth > 0 && (
+                <div
+                  data-frame-index={globalFrameIndex}
+                  data-ruler="right"
+                  className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-l border-gray-300`}
+                  style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction }}
+                >
+                  {showFrameLabel || isCurrent ? formatTimecodeOneBased(globalFrameIndex, fps) : ''}
+                </div>
+              )}
             </React.Fragment>
           );
         })}
@@ -462,6 +466,7 @@ const areTimesheetColumnPropsEqual = (prev: TimesheetColumnProps, next: Timeshee
   if (prev.isCurrentSheet !== next.isCurrentSheet) return false;
   if (prev.endBoundaryRow !== next.endBoundaryRow) return false;
   if (prev.pastEndStartRow !== next.pastEndStartRow) return false;
+  if (prev.rightRulerWidth !== next.rightRulerWidth) return false;
   if (prev.layoutKey !== next.layoutKey) return false;
   if (prev.trackOrderKey !== next.trackOrderKey) return false;
   if (prev.activeTrackId !== next.activeTrackId) return false;
