@@ -44,6 +44,7 @@ const EDGE_SCROLL_MAX_SPEED_MOUSE = 6;
 const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
+const MOBILE_PLAYHEAD_LANE_WIDTH = 28;
 const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 6;
 
@@ -1982,7 +1983,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         style={{
           touchAction: touchActionValue,
           ...(isMobileTimesheetLayout
-            ? { position: 'absolute', top: 0, right: MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET, bottom: 0, left: 0 }
+            ? {
+                position: 'absolute',
+                top: 0,
+                right: MOBILE_SCRUB_RAIL_WIDTH + MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_SCRUB_RAIL_OFFSET,
+                bottom: 0,
+                left: 0,
+              }
             : {}),
         }}
       >
@@ -2068,6 +2075,29 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       </div>
       {isMobileTimesheetLayout && (
         <div
+          className="pointer-events-none absolute top-0 bottom-0 z-20 border-l border-red-100/80 bg-red-50/65"
+          style={{
+            width: `${MOBILE_PLAYHEAD_LANE_WIDTH}px`,
+            right: `${MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET}px`,
+          }}
+        >
+          {currentFrameRailOffset !== null && currentFrameRailOffset >= -8 && currentFrameRailOffset <= viewportHeight + 8 && (
+            <div
+              className="absolute left-0 right-0 -translate-y-1/2"
+              style={{ top: `${currentFrameRailOffset}px` }}
+            >
+              <div
+                className={`absolute left-1 right-2 top-1/2 -translate-y-1/2 border-t ${isMobileScrubRailActive ? 'border-red-500' : 'border-red-300'}`}
+              />
+              <div
+                className={`absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 shadow-sm ${isMobileScrubRailActive ? 'border-red-700 bg-red-500' : 'border-red-400 bg-white'}`}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {isMobileTimesheetLayout && (
+        <div
           ref={mobileScrubRailRef}
           className="absolute top-0 bottom-0 right-0 z-20 overflow-hidden rounded-l-xl border-l border-gray-300 bg-white/92 shadow-[-4px_0_12px_rgba(15,23,42,0.08)]"
           style={{ width: `${MOBILE_SCRUB_RAIL_WIDTH}px`, touchAction: 'none', right: `${MOBILE_SCRUB_RAIL_OFFSET}px` }}
@@ -2089,17 +2119,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full bg-gray-800 px-2 py-1 text-[10px] font-medium text-white shadow-sm">
               {formatTimecodeOneBased(currentFrame, fps)}
             </div>
-            {currentFrameRailOffset !== null && currentFrameRailOffset >= -8 && currentFrameRailOffset <= viewportHeight + 8 && (
-              <div
-                className="absolute left-1 right-1 -translate-y-1/2"
-                style={{ top: `${currentFrameRailOffset}px` }}
-              >
-                <div className={`flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-semibold shadow-sm ${isMobileScrubRailActive ? 'border-red-300 bg-red-500 text-white' : 'border-red-200 bg-white text-red-600'}`}>
-                  <span className="mr-1 h-2 w-2 rounded-full bg-current" />
-                  {currentFrame + 1}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
