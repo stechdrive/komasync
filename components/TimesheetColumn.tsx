@@ -47,8 +47,8 @@ type TimesheetColumnProps = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
-const WAVEFORM_DB_FLOOR = -45;
-const WAVEFORM_DB_CEIL = -6;
+const WAVEFORM_DB_FLOOR = -60;
+const WAVEFORM_DB_CEIL = -12;
 const WAVEFORM_MIN_VOLUME = 1e-6;
 
 type VadRange = { startRow: number; endRow: number };
@@ -213,6 +213,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
       const centerX = cssWidth / 2;
       const maxHalfWidth = Math.max(1, centerX - maxHalfPadding);
+      const minHalfWidth = Math.max(1, Math.round(maxHalfWidth * 0.04));
       const theme = getTrackTheme(track.id);
       const outlineColor = 'rgba(15, 23, 42, 0.22)';
       const highlightColor = 'rgba(255, 255, 255, 0.3)';
@@ -220,18 +221,25 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
       for (let i = 0; i < framesPerColumn; i++) {
         const frame = track.frames[startFrame + i];
+        if (!frame) continue;
         const volume = frame?.volume ?? 0;
         if (volume <= 0) continue;
         const db = 20 * Math.log10(Math.max(volume, WAVEFORM_MIN_VOLUME));
-        if (db <= WAVEFORM_DB_FLOOR) continue;
+        const y = i * rowHeight;
+        if (db <= WAVEFORM_DB_FLOOR) {
+          ctx.fillStyle = outlineColor;
+          ctx.fillRect(centerX - 0.5, y, 1, barHeight);
+          ctx.fillStyle = highlightColor;
+          ctx.fillRect(centerX, y, 0.5, barHeight);
+          continue;
+        }
         const normalized = clamp(
           (db - WAVEFORM_DB_FLOOR) / (WAVEFORM_DB_CEIL - WAVEFORM_DB_FLOOR),
           0,
           1
         );
-        const halfWidth = maxHalfWidth * normalized;
+        const halfWidth = Math.max(minHalfWidth, maxHalfWidth * normalized);
         if (halfWidth <= 0.5) continue;
-        const y = i * rowHeight;
         ctx.fillStyle = outlineColor;
         ctx.fillRect(
           centerX - halfWidth - outlinePadding,
