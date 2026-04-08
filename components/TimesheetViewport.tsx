@@ -45,7 +45,7 @@ const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
 const MOBILE_PLAYHEAD_LANE_WIDTH = 28;
-const MOBILE_PLAYHEAD_LANE_GAP = 8;
+const MOBILE_PLAYHEAD_LANE_GAP = 0;
 const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 0;
 const MOBILE_SIDEBAR_WIDTH =
@@ -2268,7 +2268,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             )}
           </div>
           <div
-            className="pointer-events-none absolute top-0 bottom-0 overflow-hidden rounded-l-xl border-l border-gray-300 bg-white/92"
+            className="pointer-events-none absolute top-0 bottom-0 overflow-hidden bg-white/92"
             style={{
               left: `${MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_PLAYHEAD_LANE_GAP}px`,
               width: `${MOBILE_SCRUB_RAIL_WIDTH}px`,

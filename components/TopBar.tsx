@@ -81,8 +81,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               <div className="text-[var(--ui-sm)] opacity-90 font-semibold shrink-0 whitespace-nowrap">{sheetLabel}</div>
             </div>
             <div className="font-mono text-[var(--ui-xs)] sm:text-[var(--ui-sm)] truncate min-w-0">
-              <span className="inline sm:hidden font-semibold">{currentTimecode}</span>
-              <span className="hidden sm:inline">{totalTimecode}</span>
+              <span className="font-semibold">{currentTimecode}</span>
+              <span className="opacity-80">{` / ${totalTimecode}`}</span>
               {selectionSuffix}
             </div>
           </div>
