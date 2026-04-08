@@ -177,6 +177,10 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   const currentColumnOutline = isCurrentColumn ? '0 0 0 2px rgba(239, 68, 68, 0.75) inset' : undefined;
   const currentSheetGlow = isCurrentSheet ? 'inset 0 0 0 1px rgba(251, 191, 36, 0.35)' : undefined;
   const columnAccentShadow = [currentSheetGlow, currentColumnOutline].filter(Boolean).join(', ') || undefined;
+  const gridTemplateColumns =
+    rightRulerWidth > 0
+      ? `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rightRulerWidth}px`
+      : `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr))`;
 
   useEffect(() => {
     if (columnHeight <= 0 || rowHeight <= 0 || trackColumnWidth <= 0) return;
@@ -273,7 +277,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
         style={{
           height: `${columnHeight}px`,
           gridTemplateRows: `repeat(${framesPerColumn}, ${rowHeight}px)`,
-          gridTemplateColumns: `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rightRulerWidth}px`,
+          gridTemplateColumns,
         }}
       >
         {Array.from({ length: framesPerColumn }).map((_, rowIndex) => {
