@@ -44,8 +44,6 @@ const EDGE_SCROLL_MAX_SPEED_MOUSE = 6;
 const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
-const MOBILE_SCRUB_RAIL_WIDTH = 44;
-const MOBILE_SIDEBAR_WIDTH = MOBILE_SCRUB_RAIL_WIDTH;
 const MOBILE_TARGET_VISIBLE_FRAMES = 48;
 
 const normalizeSelectionRange = (range: SelectionRange): SelectionRange => {
@@ -2246,7 +2244,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         <div
           ref={mobileScrubRailRef}
           className="relative z-20 h-full shrink-0 border-l border-gray-300 bg-white/92 shadow-[-4px_0_12px_rgba(15,23,42,0.08)]"
-          style={{ width: `${MOBILE_SIDEBAR_WIDTH}px`, touchAction: 'none' }}
+          style={{ width: 'var(--control-size)', touchAction: 'none' }}
           onPointerDown={handleMobileRailPointerDown}
           onPointerMove={handleMobileRailPointerMove}
           onPointerUp={handleMobileRailPointerUp}
