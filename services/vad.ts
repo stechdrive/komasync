@@ -87,7 +87,7 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
     // v6モデルは確率の立ち下がりがシャープなので保持を控えめにする
     probabilityHysteresis = clamp(probabilityHysteresis + 0.12, 0.6, 0.95);
     hysteresisRatio = clamp(hysteresisRatio + 0.03, 0.6, 0.95);
-    holdFrames = 2;
+    holdFrames = 1;
   }
 
   const endThreshold = startThreshold * hysteresisRatio;
