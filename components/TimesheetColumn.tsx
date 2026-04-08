@@ -284,13 +284,13 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
             frameNumInColumn === 1 ||
             (labelStep > 1 && frameNumInColumn % labelStep === 0);
           const localFrameNumber = columnOffset + frameNumInColumn;
+          const isCurrent = rowIndex === cursorRow;
           const leftRulerLabel = isCurrent && isMobileLayout
             ? formatTimecodeOneBased(globalFrameIndex, fps)
             : localFrameNumber;
 
           const isPastEnd = pastEndStartRow !== null ? rowIndex >= pastEndStartRow : false;
           const isEndBoundary = endBoundaryRow !== null && rowIndex === endBoundaryRow;
-          const isCurrent = rowIndex === cursorRow;
 
           const isInSelection = selectionSlices.some(
             (selectionSlice) => rowIndex >= selectionSlice.startRow && rowIndex <= selectionSlice.endRow
