@@ -110,9 +110,11 @@ const getAutoUiScale = (): number => {
   const vp = getViewportWidth();
   const sw = window.screen?.width;
   if (typeof sw === 'number' && sw > 0 && vp > sw * 1.3) {
+    // Android 表示スケーリング: viewport が screen より大幅に広い
     return Math.min(Math.round((vp / sw) * 0.85 * 20) / 20, 1.5);
   }
-  return 1;
+  // 通常のモバイル端末（iPhone 等）: コントロールを小さめにしてタイムシート領域を広く取る
+  return 0.75;
 };
 
 const loadUiScale = (): number => {
