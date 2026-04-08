@@ -47,6 +47,9 @@ type TimesheetColumnProps = {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const WAVEFORM_DB_FLOOR = -45;
+const WAVEFORM_DB_CEIL = -6;
+const WAVEFORM_MIN_VOLUME = 1e-6;
 
 type VadRange = { startRow: number; endRow: number };
 
@@ -188,7 +191,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
     const barHeight = Math.max(1, rowHeight);
     const outlinePadding = Math.min(0.7, rowHeight * 0.08);
 
-    tracks.forEach((track, trackIndex) => {
+    tracks.forEach((track) => {
       const canvas = waveCanvasRefs.current.get(track.id);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -208,11 +211,8 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
       ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-      const volumeMax = trackMaxVolumes[trackIndex] ?? 0;
-      const volumeDenom = volumeMax > 0 ? volumeMax : 1;
       const centerX = cssWidth / 2;
       const maxHalfWidth = Math.max(1, centerX - maxHalfPadding);
-      const minHalfWidth = Math.max(1, Math.round(maxHalfWidth * 0.06));
       const theme = getTrackTheme(track.id);
       const outlineColor = 'rgba(15, 23, 42, 0.22)';
       const highlightColor = 'rgba(255, 255, 255, 0.3)';
@@ -222,8 +222,14 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
         const frame = track.frames[startFrame + i];
         const volume = frame?.volume ?? 0;
         if (volume <= 0) continue;
-        const normalized = Math.min(1, volume / volumeDenom);
-        const halfWidth = Math.max(minHalfWidth, maxHalfWidth * normalized);
+        const db = 20 * Math.log10(Math.max(volume, WAVEFORM_MIN_VOLUME));
+        if (db <= WAVEFORM_DB_FLOOR) continue;
+        const normalized = clamp(
+          (db - WAVEFORM_DB_FLOOR) / (WAVEFORM_DB_CEIL - WAVEFORM_DB_FLOOR),
+          0,
+          1
+        );
+        const halfWidth = maxHalfWidth * normalized;
         if (halfWidth <= 0.5) continue;
         const y = i * rowHeight;
         ctx.fillStyle = outlineColor;
@@ -239,7 +245,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
         ctx.fillRect(centerX - 0.5, y, 1, barHeight);
       }
     });
-  }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, trackMaxVolumes, tracks]);
+  }, [columnHeight, framesPerColumn, rowHeight, startFrame, trackColumnWidth, tracks]);
 
   return (
     <div
