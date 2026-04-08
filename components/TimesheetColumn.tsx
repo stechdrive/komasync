@@ -174,9 +174,8 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
   const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
   const vadBorderWidth = clamp(Math.round(rowHeight * 0.08), 1, 2);
-  const currentColumnOutline = isCurrentColumn ? '0 0 0 2px rgba(239, 68, 68, 0.75) inset' : undefined;
   const currentSheetGlow = isCurrentSheet ? 'inset 0 0 0 1px rgba(251, 191, 36, 0.35)' : undefined;
-  const columnAccentShadow = [currentSheetGlow, currentColumnOutline].filter(Boolean).join(', ') || undefined;
+  const columnAccentShadow = currentSheetGlow || undefined;
   const gridTemplateColumns =
     rightRulerWidth > 0
       ? `${rulerWidth}px repeat(${tracks.length}, minmax(0, 1fr)) ${rightRulerWidth}px`
@@ -253,9 +252,6 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
         ...(columnBoundary.style ?? {}),
       }}
     >
-      {isCurrentColumn && (
-        <div className="pointer-events-none absolute top-0 left-0 right-0 z-50 h-1 bg-red-400" />
-      )}
       <div className="absolute inset-0 pointer-events-none z-10">
         {tracks.map((track, index) => (
           <canvas
