@@ -369,9 +369,6 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
                       touchAction,
                     }}
                   >
-                    {isEndBoundary && (
-                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-400 z-10 pointer-events-none overflow-visible" />
-                    )}
 
                     {isSpeech && (
                       <div
