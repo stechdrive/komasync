@@ -82,10 +82,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const isCompactBar = barWidth > 0 ? barWidth < 720 * uiScale : isMobileLayout;
   const isTightBar = barWidth > 0 ? barWidth < 560 * uiScale : isMobileLayout;
-  const showReset = !isCompactBar;
+  const showReset = !isCompactBar || isMobileLayout;
   const showAppName = !isCompactBar;
   const showZoom = !isCompactBar;
-  const showMute = !isTightBar;
+  const showMute = !isTightBar || isMobileLayout;
   const showHelp = !isCompactBar;
 
   return (
