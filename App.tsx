@@ -79,6 +79,7 @@ const INPUT_TEST_MIN_SPEECH_RATIO = 0.12;
 const INPUT_TEST_TARGET_PEAK_DB = -6;
 const INPUT_TEST_MIN_RMS = 0.008;
 const INPUT_TEST_UI_UPDATE_MS = 120;
+const MOBILE_UI_MAX_WIDTH = 900;
 
 const dbToGain = (db: number): number => Math.pow(10, db / 20);
 const gainToDb = (gain: number): number => 20 * Math.log10(Math.max(gain, 1e-8));
@@ -261,6 +262,14 @@ export default function App() {
   const [sheetZoom, setSheetZoom] = useState(1);
   const [vadEngineStatus, setVadEngineStatus] = useState<SileroVadStatus>(() => getSileroVadStatus());
   const [vadEngineError, setVadEngineError] = useState<SileroVadError>(() => getSileroVadError());
+  const [mobileViewportWidth, setMobileViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 0 : window.innerWidth
+  );
+  const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : false
+  );
   
   // Selection State
   const [selection, setSelection] = useState<SelectionRanges>([]);
@@ -318,6 +327,39 @@ export default function App() {
   const animationFrameRef = useRef<number>(0);
 
   useViewportHeight();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateViewportWidth = () => {
+      setMobileViewportWidth(window.innerWidth);
+    };
+
+    updateViewportWidth();
+    window.addEventListener('resize', updateViewportWidth);
+
+    if (typeof window.matchMedia !== 'function') {
+      return () => window.removeEventListener('resize', updateViewportWidth);
+    }
+
+    const mediaQuery = window.matchMedia('(pointer: coarse)');
+    const updatePointer = () => setIsCoarsePointer(mediaQuery.matches);
+    updatePointer();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updatePointer);
+      return () => {
+        window.removeEventListener('resize', updateViewportWidth);
+        mediaQuery.removeEventListener('change', updatePointer);
+      };
+    }
+
+    mediaQuery.addListener(updatePointer);
+    return () => {
+      window.removeEventListener('resize', updateViewportWidth);
+      mediaQuery.removeListener(updatePointer);
+    };
+  }, []);
 
   const startScrubState = useCallback((autoResetMs?: number) => {
     if (scrubStateResetRef.current !== null) {
@@ -2444,6 +2486,7 @@ export default function App() {
   const isPlaying = recordingState === RecordingState.PLAYING;
   const isBusy = recordingState === RecordingState.PROCESSING;
   const isPreparing = isMicPreparing && !isRecording;
+  const isMobileUi = isCoarsePointer && mobileViewportWidth > 0 && mobileViewportWidth < MOBILE_UI_MAX_WIDTH;
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
   const mutedCount = tracks.filter((track) => track.isMuted).length;
@@ -2494,6 +2537,7 @@ export default function App() {
       }
       bottom={
         <TransportDock
+          isMobileLayout={isMobileUi}
           recordingState={recordingState}
           hasAudio={hasAudio}
           recordTrackId={recordTrackId}
@@ -2545,59 +2589,61 @@ export default function App() {
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
-      <div className="pointer-events-none touch-no-select absolute right-3 bottom-3 z-30 sm:hidden">
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!canRecordToggle}
-            onClick={() => {
-              setMobileInteractionMode('navigate');
-              if (isRecording) {
-                handleStopRecording();
-              } else {
-                void handleStartRecording();
-              }
-            }}
-            className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-lg transition-colors ${
-              canRecordToggle
-                ? isRecording
-                  ? 'border-red-600 bg-red-50'
-                  : 'border-red-200 bg-white'
-                : 'border-gray-200 bg-gray-100 opacity-60'
-            }`}
-            title={isRecording ? t('transport.recordStop') : t('transport.recordStart')}
-          >
-            {isRecording ? (
-              <span className="h-4 w-4 rounded-sm bg-red-600" />
-            ) : (
-              <span className="h-4 w-4 rounded-full bg-red-500" />
-            )}
-          </button>
+      {isMobileUi && (
+        <div className="pointer-events-none touch-no-select absolute right-3 bottom-3 z-30">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!canRecordToggle}
+              onClick={() => {
+                setMobileInteractionMode('navigate');
+                if (isRecording) {
+                  handleStopRecording();
+                } else {
+                  void handleStartRecording();
+                }
+              }}
+              className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-lg transition-colors ${
+                canRecordToggle
+                  ? isRecording
+                    ? 'border-red-600 bg-red-50'
+                    : 'border-red-200 bg-white'
+                  : 'border-gray-200 bg-gray-100 opacity-60'
+              }`}
+              title={isRecording ? t('transport.recordStop') : t('transport.recordStart')}
+            >
+              {isRecording ? (
+                <span className="h-4 w-4 rounded-sm bg-red-600" />
+              ) : (
+                <span className="h-4 w-4 rounded-full bg-red-500" />
+              )}
+            </button>
 
-          <button
-            type="button"
-            disabled={!canPlayToggle}
-            onClick={() => {
-              setMobileInteractionMode('navigate');
-              if (isPlaying) {
-                handlePause();
-              } else {
-                handlePlay();
-              }
-            }}
-            className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-xl transition-colors ${
-              canPlayToggle ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-100 text-gray-400'
-            }`}
-            title={isPlaying ? t('transport.pauseTitle') : t('transport.playTitle')}
-          >
-            {isPlaying ? (
-              <Pause className="h-6 w-6" />
-            ) : (
-              <Play className="h-6 w-6 translate-x-[1px]" />
-            )}
-          </button>
+            <button
+              type="button"
+              disabled={!canPlayToggle}
+              onClick={() => {
+                setMobileInteractionMode('navigate');
+                if (isPlaying) {
+                  handlePause();
+                } else {
+                  handlePlay();
+                }
+              }}
+              className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-xl transition-colors ${
+                canPlayToggle ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-100 text-gray-400'
+              }`}
+              title={isPlaying ? t('transport.pauseTitle') : t('transport.playTitle')}
+            >
+              {isPlaying ? (
+                <Pause className="h-6 w-6" />
+              ) : (
+                <Play className="h-6 w-6 translate-x-[1px]" />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <EditPalette
         selectionCount={selectionCount}
