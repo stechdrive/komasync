@@ -8,6 +8,7 @@ import type { Translator } from '@/domain/i18n';
 type TopBarProps = {
   sheetNumber: number;
   totalTimecode: string;
+  currentTimecode: string;
   selectionTimecode?: string;
   t: Translator;
   isResetDisabled: boolean;
@@ -30,6 +31,7 @@ type TopBarProps = {
 export const TopBar: React.FC<TopBarProps> = ({
   sheetNumber,
   totalTimecode,
+  currentTimecode,
   selectionTimecode,
   t,
   isResetDisabled,
@@ -79,7 +81,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               <div className="text-[var(--ui-sm)] opacity-90 font-semibold shrink-0 whitespace-nowrap">{sheetLabel}</div>
             </div>
             <div className="font-mono text-[var(--ui-xs)] sm:text-[var(--ui-sm)] truncate min-w-0">
-              {totalTimecode}
+              <span className="inline sm:hidden font-semibold">{currentTimecode}</span>
+              <span className="hidden sm:inline">{totalTimecode}</span>
               {selectionSuffix}
             </div>
           </div>
@@ -92,7 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onClick={onZoomOut}
               disabled={isZoomOutDisabled}
               {...tooltipProps}
-              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+              className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
               title={t('topBar.zoomOutTitle')}
             >
               <ZoomOut className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -101,7 +104,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               type="button"
               onClick={onZoomReset}
               {...tooltipProps}
-              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+              className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
               title={t('topBar.zoomResetTitle')}
               aria-label={t('topBar.zoomResetAria')}
             >
@@ -112,7 +115,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onClick={onZoomIn}
               disabled={isZoomInDisabled}
               {...tooltipProps}
-              className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+              className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
               title={t('topBar.zoomInTitle')}
             >
               <ZoomIn className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -123,7 +126,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={onUndo}
             disabled={isUndoDisabled}
             {...tooltipProps}
-            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+            className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title={t('topBar.undoTitle')}
           >
             <Undo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -133,7 +136,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={onRedo}
             disabled={isRedoDisabled}
             {...tooltipProps}
-            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
+            className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 disabled:opacity-40"
             title={t('topBar.redoTitle')}
           >
             <Redo2 className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -145,7 +148,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onOpenMuteMenu({ x: rect.right - 8, y: rect.bottom + 6 });
             }}
             {...tooltipProps}
-            className={`w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
+            className={`mobile-tight-hide shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40 ${
               hasMuted ? 'text-amber-100' : ''
             }`}
             title={t('topBar.muteTitle')}
@@ -160,7 +163,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onOpenHelp}
             {...tooltipProps}
-            className="mobile-compact-hide w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            className="mobile-compact-hide shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title={t('topBar.helpTitle')}
           >
             <HelpCircle className="w-[var(--control-icon)] h-[var(--control-icon)]" />
@@ -169,7 +172,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onOpenMore}
             {...tooltipProps}
-            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            className="shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title={t('topBar.moreTitle')}
           >
             <MoreHorizontal className="w-[var(--control-icon)] h-[var(--control-icon)]" />

@@ -39,8 +39,14 @@ body {
   }
 }
 
-@media (max-width: 430px) {
+@media (pointer: coarse) and (max-width: 640px), (max-width: 520px) {
   .mobile-compact-hide {
+    display: none !important;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 430px), (max-width: 390px) {
+  .mobile-tight-hide {
     display: none !important;
   }
 }

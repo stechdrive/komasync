@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
-import { formatTimecodeOneBased } from '@/domain/timecode';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
 import { EditTarget, SelectionRange, SelectionRanges } from '@/domain/editTypes';
 import type { Translator } from '@/domain/i18n';
@@ -2284,9 +2283,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 style={{ top: `${tick.top}px` }}
               />
             ))}
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full bg-gray-800 px-2 py-1 text-[10px] font-medium text-white shadow-sm">
-              {formatTimecodeOneBased(currentFrame, fps)}
-            </div>
           </div>
         </div>
       )}

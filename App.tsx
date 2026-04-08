@@ -52,7 +52,7 @@ import { useViewportHeight } from './hooks/useViewportHeight';
 import { FrameData, InputTestState, RecordingState, Track } from './types';
 import { ClipboardClip, EditTarget, SelectionRange, SelectionRanges } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
-import { formatTimecode } from './domain/timecode';
+import { formatTimecode, formatTimecodeOneBased } from './domain/timecode';
 import { createI18n, getInitialLanguage, type Language } from './domain/i18n';
 
 const FPS = DEFAULT_FPS;
@@ -2438,6 +2438,7 @@ export default function App() {
   const sheetNumber = Math.floor(currentFrame / framesPerSheet) + 1;
 
   const totalTimecode = formatTimecode(maxFrames, FPS);
+  const currentTimecode = formatTimecodeOneBased(currentFrame, FPS);
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
   const isRecording = recordingState === RecordingState.RECORDING;
   const isPlaying = recordingState === RecordingState.PLAYING;
@@ -2463,6 +2464,7 @@ export default function App() {
         <TopBar
           sheetNumber={sheetNumber}
           totalTimecode={totalTimecode}
+          currentTimecode={currentTimecode}
           selectionTimecode={selectionTimecode}
           t={t}
           isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
@@ -2653,12 +2655,14 @@ export default function App() {
         isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
         isZoomInDisabled={isZoomInDisabled}
         isZoomOutDisabled={isZoomOutDisabled}
+        mutedCount={mutedCount}
         onClose={() => setIsMoreOpen(false)}
         onOpenHelp={() => {
           setIsHelpOpen(true);
           setIsMoreOpen(false);
           setMuteMenu(null);
         }}
+        onOpenMuteMenu={handleOpenMuteMenu}
         onReset={handleResetProject}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
