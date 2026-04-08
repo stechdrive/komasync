@@ -28,6 +28,7 @@ type TopBarProps = {
   onOpenHelp: () => void;
   onOpenMore: () => void;
   onBarWidthChange?: (width: number) => void;
+  uiScale?: number;
 };
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -53,6 +54,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenHelp,
   onOpenMore,
   onBarWidthChange,
+  uiScale = 1,
 }) => {
   const hasMuted = mutedCount > 0;
   const { tooltip, getTooltipProps } = useLongPressTooltip();
@@ -78,8 +80,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  const isCompactBar = barWidth > 0 ? barWidth < 720 : isMobileLayout;
-  const isTightBar = barWidth > 0 ? barWidth < 560 : isMobileLayout;
+  const isCompactBar = barWidth > 0 ? barWidth < 720 * uiScale : isMobileLayout;
+  const isTightBar = barWidth > 0 ? barWidth < 560 * uiScale : isMobileLayout;
   const showReset = !isCompactBar;
   const showAppName = !isCompactBar;
   const showZoom = !isCompactBar;

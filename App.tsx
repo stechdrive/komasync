@@ -92,6 +92,40 @@ const getViewportWidth = (): number => {
   return window.innerWidth;
 };
 
+/** screen.width が viewport より大幅に小さい場合は物理画面幅を返す（Android 表示スケーリング対策） */
+const getBreakpointWidth = (): number => {
+  const vpWidth = getViewportWidth();
+  if (typeof window === 'undefined') return vpWidth;
+  const screenWidth = window.screen?.width;
+  if (typeof screenWidth === 'number' && screenWidth > 0 && screenWidth < vpWidth * 0.8) {
+    return screenWidth;
+  }
+  return vpWidth;
+};
+
+const UI_SCALE_KEY = 'komasync-ui-scale';
+
+const getAutoUiScale = (): number => {
+  if (typeof window === 'undefined') return 1;
+  const vp = getViewportWidth();
+  const sw = window.screen?.width;
+  if (typeof sw === 'number' && sw > 0 && vp > sw * 1.3) {
+    return Math.min(Math.round((vp / sw) * 0.85 * 20) / 20, 1.5);
+  }
+  return 1;
+};
+
+const loadUiScale = (): number => {
+  try {
+    const stored = localStorage.getItem(UI_SCALE_KEY);
+    if (stored !== null) {
+      const v = parseFloat(stored);
+      if (Number.isFinite(v) && v >= 0.75 && v <= 1.5) return Math.round(v * 20) / 20;
+    }
+  } catch { /* ignore */ }
+  return getAutoUiScale();
+};
+
 const dbToGain = (db: number): number => Math.pow(10, db / 20);
 const gainToDb = (gain: number): number => 20 * Math.log10(Math.max(gain, 1e-8));
 // ブラウザ側の音声処理が原因で音切れするケースがあるため、可能なら無効化を要求する
@@ -282,6 +316,7 @@ export default function App() {
       : false
   );
   const [topBarWidth, setTopBarWidth] = useState(0);
+  const [uiScale, setUiScaleRaw] = useState(loadUiScale);
   const showDebug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
   
   // Selection State
@@ -1971,6 +2006,12 @@ export default function App() {
     }
   };
 
+  const handleChangeUiScale = useCallback((value: number) => {
+    const clamped = Math.round(Math.min(1.5, Math.max(0.75, value)) * 20) / 20;
+    setUiScaleRaw(clamped);
+    try { localStorage.setItem(UI_SCALE_KEY, String(clamped)); } catch { /* ignore */ }
+  }, []);
+
   const scheduleSelectionUpdate = useCallback(
     (ranges: SelectionRanges) => {
       const normalized = mergeSelectionRanges(ranges);
@@ -2479,8 +2520,9 @@ export default function App() {
   const isBusy = recordingState === RecordingState.PROCESSING;
   const isPreparing = isMicPreparing && !isRecording;
   const isMobileUi = isCoarsePointer && mobileViewportWidth > 0 && mobileViewportWidth < MOBILE_UI_MAX_WIDTH;
-  const isMobileCompactUi = isMobileUi && mobileViewportWidth <= MOBILE_COMPACT_MAX_WIDTH;
-  const isMobileTightUi = isMobileUi && mobileViewportWidth <= MOBILE_TIGHT_MAX_WIDTH;
+  const breakpointWidth = getBreakpointWidth();
+  const isMobileCompactUi = isMobileUi && breakpointWidth <= MOBILE_COMPACT_MAX_WIDTH;
+  const isMobileTightUi = isMobileUi && breakpointWidth <= MOBILE_TIGHT_MAX_WIDTH;
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
   const mutedCount = tracks.filter((track) => track.isMuted).length;
@@ -2500,7 +2542,8 @@ export default function App() {
     root.dataset.mobileUi = isMobileUi ? 'true' : 'false';
     root.dataset.mobileCompact = isMobileCompactUi ? 'true' : 'false';
     root.dataset.mobileTight = isMobileTightUi ? 'true' : 'false';
-  }, [isMobileCompactUi, isMobileTightUi, isMobileUi]);
+    root.style.setProperty('--ui-scale', String(uiScale));
+  }, [isMobileCompactUi, isMobileTightUi, isMobileUi, uiScale]);
 
   return (
     <AppShell
@@ -2536,6 +2579,7 @@ export default function App() {
             setMuteMenu(null);
           }}
           onBarWidthChange={setTopBarWidth}
+          uiScale={uiScale}
         />
       }
       bottom={
@@ -2606,7 +2650,7 @@ export default function App() {
                   handlePlay();
                 }
               }}
-              className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-xl transition-colors ${
+              className={`flex h-[var(--control-size)] w-[var(--control-size)] items-center justify-center rounded-full border shadow-xl transition-colors ${
                 canPlayToggle ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-100 text-gray-400'
               }`}
               title={isPlaying ? t('transport.pauseTitle') : t('transport.playTitle')}
@@ -2702,6 +2746,8 @@ export default function App() {
         onChangeVadThresholdScale={handleVadThresholdScaleChange}
         onCommitVadThresholdScale={commitVadThresholdHistory}
         onTogglePlayWhileRecording={() => setPlayWhileRecording((prev) => !prev)}
+        uiScale={uiScale}
+        onChangeUiScale={handleChangeUiScale}
       />
 
       <HelpSheet isOpen={isHelpOpen} t={t} list={tList} onClose={() => setIsHelpOpen(false)} />
@@ -2726,7 +2772,7 @@ export default function App() {
           <div>DPR: {window.devicePixelRatio}</div>
           <div>screen: {window.screen?.width}x{window.screen?.height}</div>
           <div className="mt-1 border-t border-green-800 pt-1">
-            mobileVPWidth: {mobileViewportWidth.toFixed(1)}
+            mobileVPWidth: {mobileViewportWidth.toFixed(1)} | bpWidth: {breakpointWidth}
           </div>
           <div>coarse: {String(isCoarsePointer)}</div>
           <div>
@@ -2749,6 +2795,9 @@ export default function App() {
           </div>
           <div>
             --ui-sm: {typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--ui-sm').trim() : '?'}
+          </div>
+          <div>
+            uiScale: {uiScale}
           </div>
         </div>
       )}

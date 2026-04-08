@@ -49,6 +49,8 @@ type MoreSheetProps = {
   onChangeVadThresholdScale: (scale: number) => void;
   onCommitVadThresholdScale: () => void;
   onTogglePlayWhileRecording: () => void;
+  uiScale: number;
+  onChangeUiScale: (value: number) => void;
 };
 
 // onnxruntime-web と同じ判定用バイト列で WASM 機能を確認する。
@@ -136,6 +138,8 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   onChangeVadThresholdScale,
   onCommitVadThresholdScale,
   onTogglePlayWhileRecording,
+  uiScale,
+  onChangeUiScale,
 }) => {
   const [isVadDetailsOpen, setIsVadDetailsOpen] = useState(false);
   const [inputRms, setInputRms] = useState(0);
@@ -560,6 +564,28 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.displaySection')}</div>
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
+                <div className="text-[var(--ui-xs)] text-gray-600">
+                  {t('more.uiScaleLabel')}
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="75"
+                      max="150"
+                      step="5"
+                      value={Math.round(uiScale * 100)}
+                      onChange={(e) => onChangeUiScale(parseInt(e.target.value, 10) / 100)}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                      aria-label={t('more.uiScaleLabel')}
+                    />
+                    <div className="w-14 text-right font-mono text-[var(--ui-xs)] text-gray-600">{Math.round(uiScale * 100)}%</div>
+                  </div>
+                </div>
               </div>
             </div>
 

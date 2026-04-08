@@ -29,11 +29,11 @@ body {
 }
 
 :root[data-mobile-ui='true'] {
-  --ui-xs: 1rem;
-  --ui-sm: 1.125rem;
-  --control-size: 56px;
-  --control-icon: 26px;
-  --record-h: 60px;
+  --ui-xs: calc(1rem * var(--ui-scale, 1));
+  --ui-sm: calc(1.125rem * var(--ui-scale, 1));
+  --control-size: calc(56px * var(--ui-scale, 1));
+  --control-icon: calc(26px * var(--ui-scale, 1));
+  --record-h: calc(60px * var(--ui-scale, 1));
   --control-wide: min(24rem, calc(100vw - 2rem));
 }
 
@@ -47,11 +47,11 @@ body {
 
 @media (pointer: coarse) and (max-width: 900px) {
   :root {
-    --ui-xs: 1rem;
-    --ui-sm: 1.125rem;
-    --control-size: 56px;
-    --control-icon: 26px;
-    --record-h: 60px;
+    --ui-xs: calc(1rem * var(--ui-scale, 1));
+    --ui-sm: calc(1.125rem * var(--ui-scale, 1));
+    --control-size: calc(56px * var(--ui-scale, 1));
+    --control-icon: calc(26px * var(--ui-scale, 1));
+    --record-h: calc(60px * var(--ui-scale, 1));
     --control-wide: min(24rem, calc(100vw - 2rem));
   }
 }
