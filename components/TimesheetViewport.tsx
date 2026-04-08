@@ -3,7 +3,7 @@ import { Track } from '@/types';
 import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
 import { formatTimecodeOneBased } from '@/domain/timecode';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
-import { EditTarget, SelectionRange } from '@/domain/editTypes';
+import { EditTarget, SelectionRange, SelectionRanges } from '@/domain/editTypes';
 import type { Translator } from '@/domain/i18n';
 
 type TimesheetViewportProps = {
@@ -12,7 +12,7 @@ type TimesheetViewportProps = {
   virtualMaxFrames: number;
   editTarget: EditTarget;
   mobileInteractionMode?: 'navigate' | 'select';
-  selection: SelectionRange | null;
+  selection: SelectionRanges;
   t: Translator;
   fps: number;
   zoom: number;
@@ -24,7 +24,7 @@ type TimesheetViewportProps = {
   onBackgroundClick?: () => void;
   onFirstVisibleColumnChange?: (columnIndex: number) => void;
   onOpenSelectionMenu?: (point: { x: number; y: number }) => void;
-  onSelectionChange?: (range: SelectionRange | null) => void;
+  onSelectionChange?: (ranges: SelectionRanges) => void;
   onSelectionScrub?: (frame: number, trackId: string) => void;
   onSelectionCommit?: () => void;
   onTrackSelect?: (trackId: string) => void;
@@ -49,6 +49,31 @@ const MOBILE_PLAYHEAD_LANE_WIDTH = 28;
 const MOBILE_PLAYHEAD_LANE_GAP = 8;
 const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 6;
+
+const normalizeSelectionRange = (range: SelectionRange): SelectionRange => {
+  const startFrame = Math.max(0, Math.floor(Math.min(range.startFrame, range.endFrame)));
+  const endFrame = Math.max(startFrame, Math.floor(Math.max(range.startFrame, range.endFrame)));
+  return { startFrame, endFrame };
+};
+
+const mergeSelectionRanges = (ranges: SelectionRanges): SelectionRanges => {
+  if (ranges.length === 0) return [];
+  const normalized = ranges
+    .map(normalizeSelectionRange)
+    .sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame);
+
+  const merged: SelectionRanges = [{ ...normalized[0] }];
+  for (let i = 1; i < normalized.length; i += 1) {
+    const current = normalized[i];
+    const last = merged[merged.length - 1];
+    if (current.startFrame <= last.endFrame + 1) {
+      last.endFrame = Math.max(last.endFrame, current.endFrame);
+      continue;
+    }
+    merged.push({ ...current });
+  }
+  return merged;
+};
 
 export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   tracks,
@@ -115,8 +140,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const prevMetricsRef = useRef<{ columnWidth: number; rowHeight: number } | null>(null);
   const zoomScrollRafRef = useRef<number | null>(null);
   const selectionAnchorRef = useRef<number | null>(null);
+  const selectionBaseRangesRef = useRef<SelectionRanges>(selection);
   const isSelectingRef = useRef(false);
-  const selectionRangeRef = useRef<SelectionRange | null>(selection);
+  const selectionRangeRef = useRef<SelectionRanges>(selection);
   const suppressBackdropClickRef = useRef(false);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -201,6 +227,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
 
   useEffect(() => {
     selectionRangeRef.current = selection;
+    selectionBaseRangesRef.current = selection;
   }, [selection]);
 
   useEffect(() => {
@@ -633,8 +660,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const bottomSpacerHeight = isMobileTimesheetLayout
     ? Math.max(0, totalColumns - renderEndColumn - 1) * columnHeight
     : 0;
-  const selectionStart = selection ? Math.min(selection.startFrame, selection.endFrame) : null;
-  const selectionEnd = selection ? Math.max(selection.startFrame, selection.endFrame) : null;
+  const normalizedSelection = useMemo(() => mergeSelectionRanges(selection), [selection]);
   const currentColumnIndex = Math.max(0, Math.floor(currentFrame / framesPerColumn));
   const currentSheetIndex = Math.floor(currentColumnIndex / COLUMNS_PER_SHEET);
   const currentFrameRailOffset = useMemo(() => {
@@ -1148,9 +1174,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (selectionAnchorRef.current === null) return;
       const target = getTrackAtPoint(clientX, clientY);
       if (!target) return;
-      const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
-      selectionRangeRef.current = range;
-      onSelectionChangeRef.current?.(range);
+      const nextRanges = buildSelectionRanges({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
+      selectionRangeRef.current = nextRanges;
+      onSelectionChangeRef.current?.(nextRanges);
       if (pointerType === 'touch' && target.trackId) {
         onSelectionScrubRef.current?.(target.frame, target.trackId);
       }
@@ -1280,9 +1306,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         );
         const target = getMouseSelectionTarget(currentCursor.contentX + dirX * speedX, currentCursor.contentY + dirY * speedY);
         if (selectionAnchorRef.current !== null && target) {
-          const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
-          selectionRangeRef.current = range;
-          onSelectionChangeRef.current?.(range);
+          const nextRanges = buildSelectionRanges({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
+          selectionRangeRef.current = nextRanges;
+          onSelectionChangeRef.current?.(nextRanges);
         }
       }
     } else if (framesPerColumn > 0 && rowHeight > 0) {
@@ -1321,11 +1347,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, [runAutoScroll]);
 
   const isFrameInSelection = (frame: number): boolean => {
-    const range = selectionRangeRef.current;
-    if (!range) return false;
-    const start = Math.min(range.startFrame, range.endFrame);
-    const end = Math.max(range.startFrame, range.endFrame);
-    return frame >= start && frame <= end;
+    return selectionRangeRef.current.some((range) => frame >= range.startFrame && frame <= range.endFrame);
+  };
+
+  const buildSelectionRanges = (draftRange: SelectionRange): SelectionRanges => {
+    return mergeSelectionRanges([...selectionBaseRangesRef.current, normalizeSelectionRange(draftRange)]);
   };
 
   const isSelectionHit = (frame: number, trackId: string | null): boolean => {
@@ -1339,9 +1365,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (!onOpenSelectionMenu || !target) return;
     const hitSelection = isSelectionHit(target.frame, target.trackId);
     if (!hitSelection) {
-      const range = { startFrame: target.frame, endFrame: target.frame };
-      selectionRangeRef.current = range;
-      onSelectionChange?.(range);
+      const nextRanges = mergeSelectionRanges([{ startFrame: target.frame, endFrame: target.frame }]);
+      selectionRangeRef.current = nextRanges;
+      selectionBaseRangesRef.current = nextRanges;
+      onSelectionChange?.(nextRanges);
     }
     if (target.trackId) onTrackSelect?.(target.trackId);
     onOpenSelectionMenu(point);
@@ -1378,6 +1405,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
     selectionAnchorRef.current = null;
+    selectionBaseRangesRef.current = selectionRangeRef.current;
     stopMouseSelectionCursor();
     if (wasSelecting) {
       suppressBackdropClickRef.current = true;
@@ -1406,6 +1434,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     scrubPendingRef.current = null;
     pendingTapRef.current = null;
     selectionAnchorRef.current = null;
+    selectionBaseRangesRef.current = selectionRangeRef.current;
     stopMouseSelectionCursor();
     clearLongPressTimer();
     longPressPointRef.current = null;
@@ -1623,6 +1652,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         };
         if (isMobileSelectionMode || !isMobileTimesheetLayout) {
           selectionAnchorRef.current = target.frame;
+          selectionBaseRangesRef.current = isMobileSelectionMode ? selectionRangeRef.current : [];
         }
         startLongPressMenu(e, target);
         return;
@@ -1795,7 +1825,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       const dx = e.clientX - pendingTouch.x;
       const dy = e.clientY - pendingTouch.y;
       if (Math.hypot(dx, dy) > 6) {
-        if (Math.abs(dx) > Math.abs(dy) && allowSingleFingerPan) {
+        if (Math.abs(dx) > Math.abs(dy) && allowSingleFingerPan && !isMobileSelectionMode) {
           startPan(e);
           updatePan(e);
           return;
@@ -1820,9 +1850,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             ? getMouseSelectionTarget(currentCursor.contentX, currentCursor.contentY)
             : getTrackAtPoint(e.clientX, e.clientY);
         if (!target || selectionAnchorRef.current === null) return;
-        const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
-        selectionRangeRef.current = range;
-        onSelectionChange?.(range);
+        const nextRanges = buildSelectionRanges({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
+        selectionRangeRef.current = nextRanges;
+        onSelectionChange?.(nextRanges);
         startAutoScroll(e.clientX, e.clientY, e.pointerType);
         return;
       }
@@ -1831,9 +1861,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       if (e.pointerType === 'touch') {
         e.preventDefault();
       }
-      const range = { startFrame: selectionAnchorRef.current, endFrame: target.frame };
-      selectionRangeRef.current = range;
-      onSelectionChange?.(range);
+      const nextRanges = buildSelectionRanges({ startFrame: selectionAnchorRef.current, endFrame: target.frame });
+      selectionRangeRef.current = nextRanges;
+      onSelectionChange?.(nextRanges);
       if (e.pointerType === 'touch' && onSelectionScrub) {
         onSelectionScrub(target.frame, target.trackId);
       }
@@ -1866,22 +1896,23 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (Math.hypot(dx, dy) < 4) return;
 
     selectionAnchorRef.current = pending.frame;
+    selectionBaseRangesRef.current = e.shiftKey ? selectionRangeRef.current : [];
     isSelectingRef.current = true;
     if (!isMobileTimesheetLayout) {
       startMouseSelectionCursor(e.clientX, e.clientY);
     }
     if (pending.trackId) onTrackSelect?.(pending.trackId);
-    const initialRange = { startFrame: pending.frame, endFrame: pending.frame };
-    selectionRangeRef.current = initialRange;
-    onSelectionChange?.(initialRange);
+    const initialRanges = buildSelectionRanges({ startFrame: pending.frame, endFrame: pending.frame });
+    selectionRangeRef.current = initialRanges;
+    onSelectionChange?.(initialRanges);
     const currentCursor = mouseSelectionCursorStateRef.current;
     const target = !isMobileTimesheetLayout && currentCursor
       ? getMouseSelectionTarget(currentCursor.contentX, currentCursor.contentY)
       : getTrackAtPoint(e.clientX, e.clientY);
     if (target) {
-      const nextRange = { startFrame: pending.frame, endFrame: target.frame };
-      selectionRangeRef.current = nextRange;
-      onSelectionChange?.(nextRange);
+      const nextRanges = buildSelectionRanges({ startFrame: pending.frame, endFrame: target.frame });
+      selectionRangeRef.current = nextRanges;
+      onSelectionChange?.(nextRanges);
     }
     startAutoScroll(e.clientX, e.clientY, e.pointerType);
   };
@@ -1955,18 +1986,22 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       return;
     }
 
-    const hadSelection = selectionRangeRef.current !== null;
+    const hadSelection = selectionRangeRef.current.length > 0;
     const hitSelection = isSelectionHit(pending.frame, pending.trackId);
-    if (hadSelection && !hitSelection) {
-      selectionRangeRef.current = null;
-      onSelectionChange?.(null);
+    const shouldCreateTouchSelection =
+      pending.pointerType !== 'mouse' && (!isMobileTimesheetLayout || isMobileSelectionMode);
+    const shouldAppendTouchSelection = shouldCreateTouchSelection && isMobileSelectionMode;
+    if (hadSelection && !hitSelection && !shouldAppendTouchSelection) {
+      selectionRangeRef.current = [];
+      selectionBaseRangesRef.current = [];
+      onSelectionChange?.([]);
     }
 
-    const shouldCreateTouchSelection = pending.pointerType !== 'mouse' && (!isMobileTimesheetLayout || isMobileSelectionMode);
     if (shouldCreateTouchSelection && !hitSelection) {
-      const range = { startFrame: pending.frame, endFrame: pending.frame };
-      selectionRangeRef.current = range;
-      onSelectionChange?.(range);
+      selectionBaseRangesRef.current = shouldAppendTouchSelection ? selectionRangeRef.current : [];
+      const nextRanges = buildSelectionRanges({ startFrame: pending.frame, endFrame: pending.frame });
+      selectionRangeRef.current = nextRanges;
+      onSelectionChange?.(nextRanges);
     }
 
     if (pending.pointerType === 'mouse') {
@@ -1979,9 +2014,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     pendingTapRef.current = null;
     selectionAnchorRef.current = null;
     stopMouseSelectionCursor();
-    if (isMobileSelectionMode && pending.pointerType !== 'mouse') {
-      onSelectionCommit?.();
-    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -2007,7 +2039,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   return (
-    <div className="relative h-full w-full bg-gray-100 select-none">
+    <div className="touch-no-select relative h-full w-full bg-gray-100 select-none">
       <div
         ref={scrollRef}
         className={`h-full w-full overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain ${isMobileTimesheetLayout ? 'snap-none' : 'snap-x snap-proximity'} ${isMouseSelectionCursorVisible ? 'cursor-none' : 'cursor-default'}`}
@@ -2055,17 +2087,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 ? Math.floor(currentFrame - startFrame)
                 : -1;
 
-            let selectionSlice: { startRow: number; endRow: number } | null = null;
-            if (
-              selectionStart !== null &&
-              selectionEnd !== null &&
-              selectionEnd >= startFrame &&
-              selectionStart <= columnEnd
-            ) {
-              const startRow = Math.max(0, Math.floor(selectionStart - startFrame));
-              const endRow = Math.min(framesPerColumn - 1, Math.floor(selectionEnd - startFrame));
-              selectionSlice = { startRow, endRow };
-            }
+            const selectionSlices = normalizedSelection.flatMap((range) => {
+              if (range.endFrame < startFrame || range.startFrame > columnEnd) return [];
+              const startRow = Math.max(0, Math.floor(range.startFrame - startFrame));
+              const endRow = Math.min(framesPerColumn - 1, Math.floor(range.endFrame - startFrame));
+              return [{ startRow, endRow }];
+            });
 
             let pastEndStartRow: number | null = null;
             if (maxFrames <= startFrame) {
@@ -2089,7 +2116,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
                 cursorRow={cursorRow}
                 isCurrentColumn={columnIndex === currentColumnIndex}
                 isCurrentSheet={Math.floor(columnIndex / COLUMNS_PER_SHEET) === currentSheetIndex}
-                selectionSlice={selectionSlice}
+                selectionSlices={selectionSlices}
                 endBoundaryRow={endBoundaryRow}
                 pastEndStartRow={pastEndStartRow}
                 columnWidth={columnWidth}

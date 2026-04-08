@@ -28,6 +28,36 @@ const createAudioBuffer = (sampleRate: number, numberOfChannels: number, length:
   return new AudioBuffer({ sampleRate, numberOfChannels, length: safeLength });
 };
 
+const normalizeRange = (
+  startFrameInclusive: number,
+  endFrameInclusive: number
+): { startFrame: number; endFrame: number } => {
+  const startFrame = Math.max(0, Math.floor(Math.min(startFrameInclusive, endFrameInclusive)));
+  const endFrame = Math.max(startFrame, Math.floor(Math.max(startFrameInclusive, endFrameInclusive)));
+  return { startFrame, endFrame };
+};
+
+const mergeFrameRanges = (
+  ranges: Array<{ startFrame: number; endFrame: number }>
+): Array<{ startFrame: number; endFrame: number }> => {
+  if (ranges.length === 0) return [];
+  const normalized = ranges
+    .map((range) => normalizeRange(range.startFrame, range.endFrame))
+    .sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame);
+
+  const merged: Array<{ startFrame: number; endFrame: number }> = [normalized[0]];
+  for (let i = 1; i < normalized.length; i += 1) {
+    const current = normalized[i];
+    const last = merged[merged.length - 1];
+    if (current.startFrame <= last.endFrame + 1) {
+      last.endFrame = Math.max(last.endFrame, current.endFrame);
+      continue;
+    }
+    merged.push({ ...current });
+  }
+  return merged;
+};
+
 export const extractAudioRange = (
   sourceBuffer: AudioBuffer,
   startFrameInclusive: number,
@@ -158,6 +188,82 @@ export const cutAudioRangeWithSilence = (
   }
 
   return { newBuffer: out, clip };
+};
+
+export const clearAudioRangesWithSilence = (
+  sourceBuffer: AudioBuffer,
+  ranges: Array<{ startFrame: number; endFrame: number }>,
+  fps: number
+): AudioBuffer => {
+  const merged = mergeFrameRanges(ranges);
+  if (merged.length === 0) return sourceBuffer;
+
+  const out = createAudioBuffer(sourceBuffer.sampleRate, sourceBuffer.numberOfChannels, sourceBuffer.length);
+  for (let channel = 0; channel < sourceBuffer.numberOfChannels; channel++) {
+    const src = sourceBuffer.getChannelData(channel);
+    const dst = out.getChannelData(channel);
+    dst.set(src);
+  }
+
+  merged.forEach((range) => {
+    const { startSample, endSampleExclusive } = getSampleRangeFromFrameRange(
+      range.startFrame,
+      range.endFrame,
+      sourceBuffer.sampleRate,
+      fps
+    );
+    const start = clamp(startSample, 0, sourceBuffer.length);
+    const end = clamp(endSampleExclusive, 0, sourceBuffer.length);
+    if (end <= start) return;
+    for (let channel = 0; channel < sourceBuffer.numberOfChannels; channel++) {
+      out.getChannelData(channel).fill(0, start, end);
+    }
+  });
+
+  return out;
+};
+
+export const extractAudioRangesPadded = (
+  sourceBuffer: AudioBuffer | null,
+  ranges: Array<{ startFrame: number; endFrame: number }>,
+  fps: number,
+  options?: { sampleRate?: number; numberOfChannels?: number }
+): AudioBuffer => {
+  const sampleRate = sourceBuffer?.sampleRate ?? options?.sampleRate ?? 44100;
+  const numberOfChannels = sourceBuffer?.numberOfChannels ?? options?.numberOfChannels ?? 1;
+  const merged = mergeFrameRanges(ranges);
+  if (merged.length === 0) {
+    return createAudioBuffer(sampleRate, numberOfChannels, 1);
+  }
+
+  const spanStartFrame = merged[0].startFrame;
+  const spanEndFrame = merged[merged.length - 1].endFrame;
+  const clip = extractAudioRangePadded(sourceBuffer, spanStartFrame, spanEndFrame, fps, {
+    sampleRate,
+    numberOfChannels,
+  });
+
+  if (!sourceBuffer) return clip;
+  if (sourceBuffer.sampleRate !== sampleRate) {
+    throw new Error(`Sample rate mismatch: source=${sourceBuffer.sampleRate}, clip=${sampleRate}`);
+  }
+
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    clip.getChannelData(channel).fill(0);
+  }
+
+  merged.forEach((range) => {
+    const slice = extractAudioRange(sourceBuffer, range.startFrame, range.endFrame, fps);
+    if (!slice) return;
+    const offsetSample = frameToSampleIndex(range.startFrame - spanStartFrame, sampleRate, fps);
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const dst = clip.getChannelData(channel);
+      const src = slice.getChannelData(channel % slice.numberOfChannels);
+      dst.set(src, offsetSample);
+    }
+  });
+
+  return clip;
 };
 
 export const overwriteAudioAtFrame = (

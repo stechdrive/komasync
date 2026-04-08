@@ -5,6 +5,8 @@ export type SelectionRange = {
   endFrame: number;
 };
 
+export type SelectionRanges = SelectionRange[];
+
 export type ClipboardClip = {
   kind: 'single' | 'all';
   byTrackId: Record<string, AudioBuffer>;

@@ -29,7 +29,7 @@ type TimesheetColumnProps = {
   cursorRow: number;
   isCurrentColumn: boolean;
   isCurrentSheet: boolean;
-  selectionSlice: SelectionSlice | null;
+  selectionSlices: SelectionSlice[];
   endBoundaryRow: number | null;
   pastEndStartRow: number | null;
   columnWidth: number;
@@ -87,7 +87,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
   cursorRow,
   isCurrentColumn,
   isCurrentSheet,
-  selectionSlice,
+  selectionSlices,
   endBoundaryRow,
   pastEndStartRow,
   columnWidth,
@@ -151,9 +151,9 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
     return { className: 'border-l border-gray-300', style: undefined };
   }, [columnIndex]);
 
-  const selectionOverlay = useMemo(() => {
-    if (!selectionSlice) return null;
-    if (rowHeight <= 0) return null;
+  const selectionOverlays = useMemo(() => {
+    if (selectionSlices.length === 0) return [];
+    if (rowHeight <= 0) return [];
 
     const isAllTracks = activeTrackId === null;
     const targetIndex = isAllTracks ? 0 : tracks.findIndex((track) => track.id === activeTrackId);
@@ -161,11 +161,12 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
 
     const left = rulerWidth + (isAllTracks ? 0 : targetIndex * trackColumnWidth);
     const width = isAllTracks ? trackColumnWidth * tracks.length : trackColumnWidth;
-    const top = selectionSlice.startRow * rowHeight;
-    const height = (selectionSlice.endRow - selectionSlice.startRow + 1) * rowHeight;
-
-    return { left, width, top, height };
-  }, [activeTrackId, rowHeight, rulerWidth, selectionSlice, trackColumnWidth, tracks]);
+    return selectionSlices.map((selectionSlice) => {
+      const top = selectionSlice.startRow * rowHeight;
+      const height = (selectionSlice.endRow - selectionSlice.startRow + 1) * rowHeight;
+      return { left, width, top, height };
+    });
+  }, [activeTrackId, rowHeight, rulerWidth, selectionSlices, trackColumnWidth, tracks]);
 
   const selectionBorderWidth = clamp(Math.round(rowHeight * 0.12), 1, 2);
   const vadBorderWidth = clamp(Math.round(rowHeight * 0.08), 1, 2);
@@ -284,9 +285,9 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
           const isEndBoundary = endBoundaryRow !== null && rowIndex === endBoundaryRow;
           const isCurrent = rowIndex === cursorRow;
 
-          const isInSelection = selectionSlice
-            ? rowIndex >= selectionSlice.startRow && rowIndex <= selectionSlice.endRow
-            : false;
+          const isInSelection = selectionSlices.some(
+            (selectionSlice) => rowIndex >= selectionSlice.startRow && rowIndex <= selectionSlice.endRow
+          );
 
           const rulerBorder = getRowBorderClass(rowIndex, fps, true);
           const rulerTone = isCurrent ? 'bg-yellow-200 text-gray-900 font-bold' : 'bg-gray-50 text-gray-600';
@@ -403,8 +404,9 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
           });
         })}
       </div>
-      {selectionOverlay && (
+      {selectionOverlays?.map((selectionOverlay) => (
         <div
+          key={`${selectionOverlay.top}-${selectionOverlay.height}`}
           className="absolute pointer-events-none z-40"
           style={{
             top: `${selectionOverlay.top}px`,
@@ -416,15 +418,19 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
             boxSizing: 'border-box',
           }}
         />
-      )}
+      ))}
     </div>
   );
 };
 
-const areSelectionSlicesEqual = (a: SelectionSlice | null, b: SelectionSlice | null): boolean => {
+const areSelectionSlicesEqual = (a: SelectionSlice[], b: SelectionSlice[]): boolean => {
   if (a === b) return true;
-  if (!a || !b) return false;
-  return a.startRow === b.startRow && a.endRow === b.endRow;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.startRow !== b[i]?.startRow) return false;
+    if (a[i]?.endRow !== b[i]?.endRow) return false;
+  }
+  return true;
 };
 
 const areTrackDataKeysEqual = (a: TrackDataKey[], b: TrackDataKey[]): boolean => {
@@ -457,7 +463,7 @@ const areTimesheetColumnPropsEqual = (prev: TimesheetColumnProps, next: Timeshee
   if (prev.layoutKey !== next.layoutKey) return false;
   if (prev.trackOrderKey !== next.trackOrderKey) return false;
   if (prev.activeTrackId !== next.activeTrackId) return false;
-  if (!areSelectionSlicesEqual(prev.selectionSlice, next.selectionSlice)) return false;
+  if (!areSelectionSlicesEqual(prev.selectionSlices, next.selectionSlices)) return false;
   if (!areTrackDataKeysEqual(prev.trackDataKeys, next.trackDataKeys)) return false;
   if (!areNumberArraysEqual(prev.trackMaxVolumes, next.trackMaxVolumes)) return false;
   return true;

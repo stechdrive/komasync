@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Pause, Play } from 'lucide-react';
 import { blobToAudioBuffer } from './services/audioProcessor';
 import {
+  clearAudioRangesWithSilence,
   cutAudioRangeWithSilence,
   deleteAudioRangeRipple,
   extractAudioRangePadded,
+  extractAudioRangesPadded,
   insertAudioAtFrame,
   insertSilenceFramesAtFrame,
   overwriteAudioAtFrame,
@@ -23,10 +25,13 @@ import { exportSheetImagesToZip } from './services/sheetImageExporter';
 import { computeVadAutoTuning } from './services/vadAutoTuner';
 import {
   applyOverrideRange,
+  applyOverrideRanges,
   clearOverrideRange,
+  clearOverrideRanges,
   createSpeechOverrides,
   deleteOverrideRange,
   extractOverrideRange,
+  extractOverrideRanges,
   insertOverrideRange,
   overwriteOverrideRange,
   resizeSpeechOverrides,
@@ -41,7 +46,7 @@ import { TopBar } from './components/TopBar';
 import { TransportDock } from './components/TransportDock';
 import { useViewportHeight } from './hooks/useViewportHeight';
 import { FrameData, InputTestState, RecordingState, Track } from './types';
-import { ClipboardClip, EditTarget, SelectionRange } from './domain/editTypes';
+import { ClipboardClip, EditTarget, SelectionRange, SelectionRanges } from './domain/editTypes';
 import { DEFAULT_FPS, getFramesPerColumn, getFramesPerSheet } from './domain/timesheet';
 import { formatTimecode } from './domain/timecode';
 import { createI18n, getInitialLanguage, type Language } from './domain/i18n';
@@ -176,10 +181,39 @@ const getErrorName = (error: unknown): string => {
   return '';
 };
 
-const areSelectionRangesEqual = (a: SelectionRange | null, b: SelectionRange | null): boolean => {
+const normalizeSelectionRange = (range: SelectionRange): SelectionRange => {
+  const startFrame = Math.max(0, Math.floor(Math.min(range.startFrame, range.endFrame)));
+  const endFrame = Math.max(startFrame, Math.floor(Math.max(range.startFrame, range.endFrame)));
+  return { startFrame, endFrame };
+};
+
+const mergeSelectionRanges = (ranges: SelectionRanges): SelectionRanges => {
+  if (ranges.length === 0) return [];
+  const normalized = ranges
+    .map(normalizeSelectionRange)
+    .sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame);
+
+  const merged: SelectionRanges = [normalized[0]];
+  for (let i = 1; i < normalized.length; i += 1) {
+    const current = normalized[i];
+    const last = merged[merged.length - 1];
+    if (current.startFrame <= last.endFrame + 1) {
+      last.endFrame = Math.max(last.endFrame, current.endFrame);
+      continue;
+    }
+    merged.push({ ...current });
+  }
+  return merged;
+};
+
+const areSelectionRangesEqual = (a: SelectionRanges, b: SelectionRanges): boolean => {
   if (a === b) return true;
-  if (!a || !b) return false;
-  return a.startFrame === b.startFrame && a.endFrame === b.endFrame;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.startFrame !== b[i]?.startFrame) return false;
+    if (a[i]?.endFrame !== b[i]?.endFrame) return false;
+  }
+  return true;
 };
 
 export default function App() {
@@ -225,11 +259,11 @@ export default function App() {
   const [vadEngineError, setVadEngineError] = useState<SileroVadError>(() => getSileroVadError());
   
   // Selection State
-  const [selection, setSelection] = useState<SelectionRange | null>(null);
+  const [selection, setSelection] = useState<SelectionRanges>([]);
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
-  const selectionRef = useRef<SelectionRange | null>(null);
-  const selectionStateRef = useRef<SelectionRange | null>(null);
-  const selectionPendingRef = useRef<SelectionRange | null | undefined>(undefined);
+  const selectionRef = useRef<SelectionRanges>([]);
+  const selectionStateRef = useRef<SelectionRanges>([]);
+  const selectionPendingRef = useRef<SelectionRanges | undefined>(undefined);
   const selectionScrubPendingRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionScrubLastRef = useRef<{ frame: number; trackId: string } | null>(null);
   const selectionRafRef = useRef<number | null>(null);
@@ -324,7 +358,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!selection) {
+    if (selection.length === 0) {
       setSelectionMenu(null);
     }
   }, [selection]);
@@ -392,12 +426,13 @@ export default function App() {
     [bumpVirtualMaxFrames]
   );
 
-  const commitSelectionState = useCallback((range: SelectionRange | null) => {
+  const commitSelectionState = useCallback((ranges: SelectionRanges) => {
+    const normalized = mergeSelectionRanges(ranges);
     const prev = selectionStateRef.current;
-    selectionStateRef.current = range;
-    selectionRef.current = range;
-    if (areSelectionRangesEqual(prev, range)) return;
-    setSelection(range);
+    selectionStateRef.current = normalized;
+    selectionRef.current = normalized;
+    if (areSelectionRangesEqual(prev, normalized)) return;
+    setSelection(normalized);
   }, []);
 
   const clearSelectionImmediate = useCallback(() => {
@@ -408,7 +443,7 @@ export default function App() {
     selectionPendingRef.current = undefined;
     selectionScrubPendingRef.current = null;
     selectionScrubLastRef.current = null;
-    commitSelectionState(null);
+    commitSelectionState([]);
     setSelectionMenu(null);
   }, [commitSelectionState]);
 
@@ -880,7 +915,6 @@ export default function App() {
   
   const handleBackgroundClick = () => {
     clearSelectionImmediate();
-    setMobileInteractionMode('navigate');
   };
 
   const handleOpenMuteMenu = useCallback((point: { x: number; y: number }) => {
@@ -1495,13 +1529,16 @@ export default function App() {
     return tracks.find((t) => t.audioBuffer)?.audioBuffer?.sampleRate ?? 48000;
   }, [tracks]);
 
-  const getNormalizedSelection = useCallback((): { startFrame: number; endFrame: number } | null => {
-    const currentSelection = selectionRef.current;
-    if (!currentSelection) return null;
-    const startFrame = Math.max(0, Math.floor(Math.min(currentSelection.startFrame, currentSelection.endFrame)));
-    const endFrame = Math.max(startFrame, Math.floor(Math.max(currentSelection.startFrame, currentSelection.endFrame)));
-    return { startFrame, endFrame };
+  const getNormalizedSelections = useCallback((): SelectionRanges => {
+    return mergeSelectionRanges(selectionRef.current);
   }, []);
+
+  const getSelectionFrameCount = useCallback((): number => {
+    return getNormalizedSelections().reduce(
+      (total, range) => total + (range.endFrame - range.startFrame + 1),
+      0
+    );
+  }, [getNormalizedSelections]);
 
   const playSelectionScrub = useCallback(
     (frame: number, trackId: string) => {
@@ -1519,17 +1556,17 @@ export default function App() {
   );
 
   const flushSelectionUpdates = useCallback(
-    (forceRange?: SelectionRange | null) => {
+    (forceRanges?: SelectionRanges) => {
       if (selectionRafRef.current !== null) {
         cancelAnimationFrame(selectionRafRef.current);
         selectionRafRef.current = null;
       }
 
-      const hasForcedRange = forceRange !== undefined;
-      const pendingRange = hasForcedRange ? forceRange : selectionPendingRef.current;
+      const hasForcedRange = forceRanges !== undefined;
+      const pendingRanges = hasForcedRange ? forceRanges : selectionPendingRef.current;
       if (hasForcedRange || selectionPendingRef.current !== undefined) {
         selectionPendingRef.current = undefined;
-        commitSelectionState(pendingRange ?? null);
+        commitSelectionState(pendingRanges ?? []);
       }
 
       const scrubPending = selectionScrubPendingRef.current;
@@ -1547,8 +1584,8 @@ export default function App() {
 
   const handleCut = useCallback(async () => {
     flushSelectionUpdates();
-    const range = getNormalizedSelection();
-    if (!range) return;
+    const ranges = getNormalizedSelections();
+    if (ranges.length === 0) return;
 
     if (recordingState === RecordingState.PLAYING) handlePause();
 
@@ -1571,32 +1608,27 @@ export default function App() {
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
 
-        nextClipboard.byTrackId[track.id] = extractAudioRangePadded(
-          track.audioBuffer,
-          range.startFrame,
-          range.endFrame,
-          FPS,
-          {
-            sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
-            numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
-          }
-        );
+        nextClipboard.byTrackId[track.id] = extractAudioRangesPadded(track.audioBuffer, ranges, FPS, {
+          sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
+          numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
+        });
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-        nextClipboard.speechOverridesByTrackId[track.id] = extractOverrideRange(
-          baseOverrides,
-          range.startFrame,
-          range.endFrame
-        );
+        nextClipboard.speechOverridesByTrackId[track.id] = extractOverrideRanges(baseOverrides, ranges);
 
-        if (!track.audioBuffer) return track;
+        if (!track.audioBuffer) {
+          return {
+            ...track,
+            speechOverrides: clearOverrideRanges(baseOverrides, ranges),
+          };
+        }
 
-        const { newBuffer } = cutAudioRangeWithSilence(track.audioBuffer, range.startFrame, range.endFrame, FPS);
+        const newBuffer = clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS);
         pendingVad.push({ id: track.id, buffer: newBuffer });
         return {
           ...track,
           audioBuffer: newBuffer,
           frames: createEmptyFrames(newBuffer),
-          speechOverrides: clearOverrideRange(baseOverrides, range.startFrame, range.endFrame),
+          speechOverrides: clearOverrideRanges(baseOverrides, ranges),
         };
       });
 
@@ -1613,7 +1645,7 @@ export default function App() {
     createEmptyFrames,
     editTarget,
     flushSelectionUpdates,
-    getNormalizedSelection,
+    getNormalizedSelections,
     getProjectSampleRate,
     handlePause,
     recordingState,
@@ -1628,8 +1660,8 @@ export default function App() {
 
   const handleDeleteSelection = async () => {
     flushSelectionUpdates();
-    const range = getNormalizedSelection();
-    if (!range) return;
+    const ranges = getNormalizedSelections();
+    if (ranges.length === 0) return;
 
     if (recordingState === RecordingState.PLAYING) handlePause();
 
@@ -1642,24 +1674,28 @@ export default function App() {
       const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
 
       const nextTracks = tracks.map((track) => {
-        if (!targetSet.has(track.id) || !track.audioBuffer) return track;
-
-        const newBuffer = deleteAudioRangeRipple(track.audioBuffer, range.startFrame, range.endFrame, FPS);
-        pendingVad.push({ id: track.id, buffer: newBuffer });
+        if (!targetSet.has(track.id)) return track;
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-        const nextOverrides = deleteOverrideRange(baseOverrides, range.startFrame, range.endFrame);
+        if (!track.audioBuffer) {
+          return {
+            ...track,
+            speechOverrides: clearOverrideRanges(baseOverrides, ranges),
+          };
+        }
+        const newBuffer = clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS);
+        pendingVad.push({ id: track.id, buffer: newBuffer });
         return {
           ...track,
           audioBuffer: newBuffer,
           frames: createEmptyFrames(newBuffer),
-          speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
+          speechOverrides: clearOverrideRanges(baseOverrides, ranges),
         };
       });
 
       setTracks(nextTracks);
       pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       clearSelectionImmediate();
-      commitCurrentFrame(range.startFrame);
+      commitCurrentFrame(ranges[0].startFrame);
     } catch (error) {
       console.error('Delete failed:', error);
       alert(t('app.deleteFailed'));
@@ -1900,7 +1936,7 @@ export default function App() {
     if (recordingState === RecordingState.PLAYING) handlePause();
 
     flushSelectionUpdates();
-    if (getNormalizedSelection()) {
+    if (getNormalizedSelections().length > 0) {
       await handleDeleteSelection();
       return;
     }
@@ -2093,13 +2129,14 @@ export default function App() {
   };
 
   const scheduleSelectionUpdate = useCallback(
-    (range: SelectionRange | null) => {
-      if (areSelectionRangesEqual(selectionRef.current, range)) {
+    (ranges: SelectionRanges) => {
+      const normalized = mergeSelectionRanges(ranges);
+      if (areSelectionRangesEqual(selectionRef.current, normalized)) {
         setSelectionMenu(null);
         return;
       }
-      selectionRef.current = range;
-      selectionPendingRef.current = range;
+      selectionRef.current = normalized;
+      selectionPendingRef.current = normalized;
       setSelectionMenu(null);
       if (selectionRafRef.current === null) {
         selectionRafRef.current = requestAnimationFrame(() => {
@@ -2125,8 +2162,8 @@ export default function App() {
   );
 
   const handleSelectionChange = useCallback(
-    (range: SelectionRange | null) => {
-      scheduleSelectionUpdate(range);
+    (ranges: SelectionRanges) => {
+      scheduleSelectionUpdate(ranges);
     },
     [scheduleSelectionUpdate]
   );
@@ -2140,7 +2177,6 @@ export default function App() {
 
   const handleSelectionCommit = useCallback(() => {
     flushSelectionUpdates();
-    setMobileInteractionMode('navigate');
   }, [flushSelectionUpdates]);
 
   const handleOpenSelectionMenu = useCallback(
@@ -2154,8 +2190,8 @@ export default function App() {
   const applySpeechOverrideToSelection = useCallback(
     (value: number) => {
       flushSelectionUpdates();
-      const range = getNormalizedSelection();
-      if (!range) return;
+      const ranges = getNormalizedSelections();
+      if (ranges.length === 0) return;
       saveToHistory();
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
@@ -2165,23 +2201,23 @@ export default function App() {
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           return {
             ...track,
-            speechOverrides: applyOverrideRange(baseOverrides, range.startFrame, range.endFrame, value),
+            speechOverrides: applyOverrideRanges(baseOverrides, ranges, value),
           };
         })
       );
     },
-    [editTarget, flushSelectionUpdates, getNormalizedSelection, saveToHistory, tracks]
+    [editTarget, flushSelectionUpdates, getNormalizedSelections, saveToHistory, tracks]
   );
 
   const applySpeechOverrideToSelectionAndAdvance = useCallback(
     (value: number): boolean => {
       flushSelectionUpdates();
-      const range = getNormalizedSelection();
-      if (!range) return false;
+      const ranges = getNormalizedSelections();
+      if (ranges.length === 0) return false;
       applySpeechOverrideToSelection(value);
       clearSelectionImmediate();
       const endFrame = Math.max(0, maxFrames - 1);
-      const nextFrame = Math.min(range.endFrame + 1, endFrame);
+      const nextFrame = Math.min(ranges[ranges.length - 1].endFrame + 1, endFrame);
       commitCurrentFrame(nextFrame);
       startScrubState(SCRUB_STATE_RESET_MS);
       return true;
@@ -2191,7 +2227,7 @@ export default function App() {
       clearSelectionImmediate,
       commitCurrentFrame,
       flushSelectionUpdates,
-      getNormalizedSelection,
+      getNormalizedSelections,
       maxFrames,
       startScrubState,
     ]
@@ -2609,9 +2645,8 @@ export default function App() {
       ? t('app.targetAllTracks')
       : tracks.find((t) => t.id === editTarget)?.name ?? t('app.trackFallback', { track: editTarget });
 
-  const selectionRange = getNormalizedSelection();
-  const selectionCount = selectionRange ? selectionRange.endFrame - selectionRange.startFrame + 1 : 0;
-  const selectionTimecode = selectionRange ? formatTimecode(selectionCount, FPS) : undefined;
+  const selectionCount = getSelectionFrameCount();
+  const selectionTimecode = selectionCount > 0 ? formatTimecode(selectionCount, FPS) : undefined;
 
   return (
     <AppShell
@@ -2699,8 +2734,8 @@ export default function App() {
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
 
-      <div className="pointer-events-none absolute right-3 bottom-3 z-30 sm:hidden">
-        <div className="pointer-events-auto flex flex-col items-end gap-2">
+      <div className="pointer-events-none touch-no-select absolute right-3 bottom-3 z-30 sm:hidden">
+        <div className="pointer-events-auto flex items-center gap-2">
           <button
             type="button"
             disabled={!canRecordToggle}
@@ -2712,7 +2747,7 @@ export default function App() {
                 void handleStartRecording();
               }
             }}
-            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+            className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-lg transition-colors ${
               canRecordToggle
                 ? isRecording
                   ? 'border-red-600 bg-red-50'
@@ -2722,7 +2757,7 @@ export default function App() {
             title={isRecording ? t('transport.recordStop') : t('transport.recordStart')}
           >
             {isRecording ? (
-              <span className="h-3.5 w-3.5 rounded-sm bg-red-600" />
+              <span className="h-4 w-4 rounded-sm bg-red-600" />
             ) : (
               <span className="h-4 w-4 rounded-full bg-red-500" />
             )}

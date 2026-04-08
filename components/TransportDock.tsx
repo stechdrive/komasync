@@ -68,13 +68,14 @@ export const TransportDock: React.FC<TransportDockProps> = ({
   const recordIndicator = t('transport.recordTrackIndicator', { track: recordTrackId });
 
   return (
-    <div className="safe-area-bottom bg-white border-t border-gray-200">
+    <div className="safe-area-bottom touch-no-select bg-white border-t border-gray-200">
       <div className="sm:hidden overflow-x-auto overscroll-x-contain px-3 py-2">
         <div className="flex min-w-max items-center gap-2">
           <div className="flex shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-1">
             <button
               type="button"
               onClick={() => onChangeMobileInteractionMode('navigate')}
+              {...tooltipProps}
               className={`min-w-[3rem] h-[var(--control-size)] rounded-lg px-3 text-[var(--ui-sm)] font-bold transition-colors ${
                 mobileInteractionMode === 'navigate'
                   ? 'bg-indigo-600 text-white shadow-sm'
@@ -87,6 +88,7 @@ export const TransportDock: React.FC<TransportDockProps> = ({
             <button
               type="button"
               onClick={() => onChangeMobileInteractionMode('select')}
+              {...tooltipProps}
               className={`min-w-[3rem] h-[var(--control-size)] rounded-lg px-3 text-[var(--ui-sm)] font-bold transition-colors ${
                 mobileInteractionMode === 'select'
                   ? 'bg-indigo-600 text-white shadow-sm'

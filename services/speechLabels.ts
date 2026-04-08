@@ -41,6 +41,22 @@ export const applyOverrideRange = (
 export const clearOverrideRange = (overrides: number[], startFrame: number, endFrame: number): number[] =>
   applyOverrideRange(overrides, startFrame, endFrame, 0);
 
+export const applyOverrideRanges = (
+  overrides: number[],
+  ranges: Array<{ startFrame: number; endFrame: number }>,
+  value: number
+): number[] => {
+  return ranges.reduce(
+    (current, range) => applyOverrideRange(current, range.startFrame, range.endFrame, value),
+    overrides.slice()
+  );
+};
+
+export const clearOverrideRanges = (
+  overrides: number[],
+  ranges: Array<{ startFrame: number; endFrame: number }>
+): number[] => applyOverrideRanges(overrides, ranges, 0);
+
 export const extractOverrideRange = (overrides: number[], startFrame: number, endFrame: number): number[] => {
   const { start, end } = normalizeRange(startFrame, endFrame);
   const length = end - start + 1;
@@ -48,6 +64,35 @@ export const extractOverrideRange = (overrides: number[], startFrame: number, en
   const slice = overrides.slice(start, end + 1);
   if (slice.length >= length) return slice;
   return slice.concat(createSpeechOverrides(length - slice.length));
+};
+
+export const extractOverrideRanges = (
+  overrides: number[],
+  ranges: Array<{ startFrame: number; endFrame: number }>
+): number[] => {
+  if (ranges.length === 0) return [];
+  const normalized = ranges
+    .map((range) => normalizeRange(range.startFrame, range.endFrame))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const merged: Array<{ start: number; end: number }> = [];
+  normalized.forEach((range) => {
+    const last = merged[merged.length - 1];
+    if (!last || range.start > last.end + 1) {
+      merged.push({ ...range });
+      return;
+    }
+    last.end = Math.max(last.end, range.end);
+  });
+
+  const spanStart = merged[0].start;
+  const spanEnd = merged[merged.length - 1].end;
+  const out = createSpeechOverrides(spanEnd - spanStart + 1);
+  merged.forEach((range) => {
+    const slice = extractOverrideRange(overrides, range.start, range.end);
+    out.splice(range.start - spanStart, slice.length, ...slice);
+  });
+  return out;
 };
 
 export const insertOverrideRange = (

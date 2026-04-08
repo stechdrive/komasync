@@ -56,3 +56,10 @@ body {
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+.touch-no-select,
+.touch-no-select *:not(input):not(textarea):not([contenteditable='true']) {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
