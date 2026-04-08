@@ -80,6 +80,17 @@ const INPUT_TEST_TARGET_PEAK_DB = -6;
 const INPUT_TEST_MIN_RMS = 0.008;
 const INPUT_TEST_UI_UPDATE_MS = 120;
 const MOBILE_UI_MAX_WIDTH = 900;
+const MOBILE_COMPACT_MAX_WIDTH = 760;
+const MOBILE_TIGHT_MAX_WIDTH = 430;
+
+const getViewportWidth = (): number => {
+  if (typeof window === 'undefined') return 0;
+  const visualWidth = window.visualViewport?.width;
+  if (typeof visualWidth === 'number' && visualWidth > 0) {
+    return visualWidth;
+  }
+  return window.innerWidth;
+};
 
 const dbToGain = (db: number): number => Math.pow(10, db / 20);
 const gainToDb = (gain: number): number => 20 * Math.log10(Math.max(gain, 1e-8));
@@ -263,7 +274,7 @@ export default function App() {
   const [vadEngineStatus, setVadEngineStatus] = useState<SileroVadStatus>(() => getSileroVadStatus());
   const [vadEngineError, setVadEngineError] = useState<SileroVadError>(() => getSileroVadError());
   const [mobileViewportWidth, setMobileViewportWidth] = useState(() =>
-    typeof window === 'undefined' ? 0 : window.innerWidth
+    getViewportWidth()
   );
   const [isCoarsePointer, setIsCoarsePointer] = useState(() =>
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -332,14 +343,18 @@ export default function App() {
     if (typeof window === 'undefined') return;
 
     const updateViewportWidth = () => {
-      setMobileViewportWidth(window.innerWidth);
+      setMobileViewportWidth(getViewportWidth());
     };
 
     updateViewportWidth();
     window.addEventListener('resize', updateViewportWidth);
+    window.visualViewport?.addEventListener('resize', updateViewportWidth);
 
     if (typeof window.matchMedia !== 'function') {
-      return () => window.removeEventListener('resize', updateViewportWidth);
+      return () => {
+        window.removeEventListener('resize', updateViewportWidth);
+        window.visualViewport?.removeEventListener('resize', updateViewportWidth);
+      };
     }
 
     const mediaQuery = window.matchMedia('(pointer: coarse)');
@@ -350,6 +365,7 @@ export default function App() {
       mediaQuery.addEventListener('change', updatePointer);
       return () => {
         window.removeEventListener('resize', updateViewportWidth);
+        window.visualViewport?.removeEventListener('resize', updateViewportWidth);
         mediaQuery.removeEventListener('change', updatePointer);
       };
     }
@@ -357,6 +373,7 @@ export default function App() {
     mediaQuery.addListener(updatePointer);
     return () => {
       window.removeEventListener('resize', updateViewportWidth);
+      window.visualViewport?.removeEventListener('resize', updateViewportWidth);
       mediaQuery.removeListener(updatePointer);
     };
   }, []);
@@ -447,26 +464,13 @@ export default function App() {
     currentFrameRef.current = currentFrame;
   }, [currentFrame]);
 
-  const bumpVirtualMaxFrames = useCallback((frame: number) => {
-    const baseFrame = Math.max(0, Math.floor(frame));
-    const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
-    const required = Math.max(
-      maxFramesRef.current,
-      (columnIndex + 1 + VIRTUAL_TAIL_COLUMNS) * FRAMES_PER_COLUMN
-    );
-    if (required <= virtualMaxFramesRef.current) return;
-    virtualMaxFramesRef.current = required;
-    setVirtualMaxFrames(required);
-  }, []);
-
   const commitCurrentFrame = useCallback(
     (nextFrame: number) => {
       const clampedFrame = Math.max(0, Math.floor(nextFrame));
       currentFrameRef.current = clampedFrame;
       setCurrentFrame(clampedFrame);
-      bumpVirtualMaxFrames(clampedFrame);
     },
-    [bumpVirtualMaxFrames]
+    []
   );
 
   const commitSelectionState = useCallback((ranges: SelectionRanges) => {
@@ -2487,6 +2491,8 @@ export default function App() {
   const isBusy = recordingState === RecordingState.PROCESSING;
   const isPreparing = isMicPreparing && !isRecording;
   const isMobileUi = isCoarsePointer && mobileViewportWidth > 0 && mobileViewportWidth < MOBILE_UI_MAX_WIDTH;
+  const isMobileCompactUi = isMobileUi && mobileViewportWidth <= MOBILE_COMPACT_MAX_WIDTH;
+  const isMobileTightUi = isMobileUi && mobileViewportWidth <= MOBILE_TIGHT_MAX_WIDTH;
   const canRecordToggle = !isBusy && !isPreparing;
   const canPlayToggle = hasAudio && !isBusy && !isRecording;
   const mutedCount = tracks.filter((track) => track.isMuted).length;
@@ -2500,6 +2506,13 @@ export default function App() {
 
   const selectionCount = getSelectionFrameCount();
   const selectionTimecode = selectionCount > 0 ? formatTimecode(selectionCount, FPS) : undefined;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.mobileUi = isMobileUi ? 'true' : 'false';
+    root.dataset.mobileCompact = isMobileCompactUi ? 'true' : 'false';
+    root.dataset.mobileTight = isMobileTightUi ? 'true' : 'false';
+  }, [isMobileCompactUi, isMobileTightUi, isMobileUi]);
 
   return (
     <AppShell

@@ -18,34 +18,51 @@ body {
 
 :root {
   --app-height: 100dvh;
-  --ui-xs: clamp(14px, 3vw, 16px);
-  --ui-sm: clamp(16px, 3.6vw, 19px);
-  --control-size: clamp(46px, 8vw, 52px);
-  --control-icon: clamp(20px, 4.2vw, 26px);
-  --record-h: clamp(50px, 9vw, 64px);
+  --ui-xs: 0.9375rem;
+  --ui-sm: 1.0625rem;
+  --control-size: 48px;
+  --control-icon: 22px;
+  --record-h: 56px;
   --control-wide: clamp(240px, 44vw, 368px);
   --topbar-h: calc(var(--control-size) + 1.25rem + env(safe-area-inset-top));
   --dock-h: calc(var(--record-h) + 1rem + env(safe-area-inset-bottom));
 }
 
-@media (pointer: coarse) and (max-width: 900px), (max-width: 640px) {
+:root[data-mobile-ui='true'] {
+  --ui-xs: 1rem;
+  --ui-sm: 1.125rem;
+  --control-size: 56px;
+  --control-icon: 26px;
+  --record-h: 60px;
+  --control-wide: min(24rem, calc(100vw - 2rem));
+}
+
+:root[data-mobile-compact='true'] .mobile-compact-hide {
+  display: none !important;
+}
+
+:root[data-mobile-tight='true'] .mobile-tight-hide {
+  display: none !important;
+}
+
+@media (pointer: coarse) and (max-width: 900px) {
   :root {
-    --ui-xs: clamp(16px, 3.8vw, 18px);
-    --ui-sm: clamp(18px, 4.4vw, 21px);
-    --control-size: clamp(52px, 12vw, 60px);
-    --control-icon: clamp(24px, 5vw, 29px);
-    --record-h: clamp(58px, 13vw, 70px);
-    --control-wide: clamp(264px, 70vw, 384px);
+    --ui-xs: 1rem;
+    --ui-sm: 1.125rem;
+    --control-size: 56px;
+    --control-icon: 26px;
+    --record-h: 60px;
+    --control-wide: min(24rem, calc(100vw - 2rem));
   }
 }
 
-@media (pointer: coarse) and (max-width: 900px), (max-width: 520px) {
+@media (pointer: coarse) and (max-width: 760px), (max-width: 520px) {
   .mobile-compact-hide {
     display: none !important;
   }
 }
 
-@media (pointer: coarse) and (max-width: 900px), (max-width: 390px) {
+@media (pointer: coarse) and (max-width: 430px), (max-width: 390px) {
   .mobile-tight-hide {
     display: none !important;
   }
