@@ -18,7 +18,8 @@ type VadWorkerResponse = {
 
 const VAD_SAMPLE_RATE = 16000;
 const VAD_CHUNK_SAMPLES = 512;
-const VAD_STEP_SAMPLES = 320;
+const VAD_STEP_SAMPLES = 512;
+const VAD_CONTEXT_SAMPLES = 64;
 const PROB_MIN = 0.05;
 const PROB_MAX = 0.95;
 const NOISE_FLOOR_QUANTILE = 0.2;
@@ -144,9 +145,10 @@ const resolveStateShape = (meta: { dimensions?: number[] } | undefined, fallback
 
 const resolveInputShape = (meta: { dimensions?: number[] } | undefined): number[] => {
   const dims = meta?.dimensions ?? [];
-  if (dims.length === 3) return [1, 1, VAD_CHUNK_SAMPLES];
-  if (dims.length === 2) return [1, VAD_CHUNK_SAMPLES];
-  return [1, VAD_CHUNK_SAMPLES];
+  const inputLen = VAD_CONTEXT_SAMPLES + VAD_CHUNK_SAMPLES;
+  if (dims.length === 3) return [1, 1, inputLen];
+  if (dims.length === 2) return [1, inputLen];
+  return [1, inputLen];
 };
 
 const ensureSession = async (baseUrl: string): Promise<SileroSessionInfo> => {
@@ -256,14 +258,21 @@ const runSilero = async (samples: Float32Array, baseUrl: string): Promise<Float3
 
   const srTensor = new ort.Tensor('int64', new BigInt64Array([BigInt(VAD_SAMPLE_RATE)]), [1]);
   const probs: number[] = [];
+  let context = new Float32Array(VAD_CONTEXT_SAMPLES);
 
   for (let offset = 0; offset < samples.length; offset += VAD_STEP_SAMPLES) {
     const chunk = new Float32Array(VAD_CHUNK_SAMPLES);
     const slice = samples.subarray(offset, Math.min(offset + VAD_CHUNK_SAMPLES, samples.length));
     chunk.set(slice);
 
+    // 公式実装に合わせてコンテキスト（前チャンク末尾64サンプル）を先頭に結合
+    const inputWithContext = new Float32Array(VAD_CONTEXT_SAMPLES + VAD_CHUNK_SAMPLES);
+    inputWithContext.set(context, 0);
+    inputWithContext.set(chunk, VAD_CONTEXT_SAMPLES);
+    context = inputWithContext.slice(-VAD_CONTEXT_SAMPLES);
+
     const feeds: Record<string, import('onnxruntime-web').Tensor> = {
-      [inputName]: new ort.Tensor('float32', chunk, inputShape),
+      [inputName]: new ort.Tensor('float32', inputWithContext, inputShape),
       [srName]: srTensor,
     };
     if (useState && stateName && stateShape && stateData) {
