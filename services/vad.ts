@@ -40,57 +40,22 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   const stability = clamp(stability01, 0, 1);
   const thresholdGain = clamp(thresholdScale, 0.5, 1.5);
 
-  const baseThreshold = (() => {
-    switch (preset) {
-      case 'quiet':
-        return 0.03;
-      case 'noisy':
-        return 0.08;
-      case 'normal':
-      default:
-        return 0.05;
-    }
-  })();
-
-  const startThreshold = clamp(baseThreshold * (1 - 0.4 * stability) * thresholdGain, 0.005, 0.5);
-  let hysteresisRatio = clamp(0.85 - 0.25 * stability, 0.55, 0.9);
-  let holdFrames = Math.round(2 + 10 * stability);
-  const aggressiveness = (() => {
-    switch (preset) {
-      case 'quiet':
-        return 1;
-      case 'noisy':
-        return 3;
-      case 'normal':
-      default:
-        return 2;
-    }
-  })();
+  // --- Silero 確率閾値（公式推奨ベース） ---
+  // quiet:  threshold=0.5, neg=0.35 (公式デフォルトそのまま)
+  // normal: threshold=0.5, neg=0.35
+  // noisy:  threshold=0.65, neg=0.50 (ノイズ耐性を上げる)
+  const probabilityBase = preset === 'noisy' ? 0.65 : 0.5;
+  // neg_threshold = threshold - 0.15 → hysteresis = (threshold - 0.15) / threshold
+  const probabilityHysteresis = preset === 'noisy' ? 0.77 : 0.7;
   const speechRatio = 0.5;
+  const holdFrames = preset === 'quiet' ? 0 : Math.round(2 + 10 * stability);
 
-  let probabilityBase = (() => {
-    switch (preset) {
-      case 'quiet':
-        return 0.35;
-      case 'noisy':
-        return 0.65;
-      case 'normal':
-      default:
-        return 0.5;
-    }
-  })();
-  let probabilityHysteresis = clamp(0.8 - 0.2 * stability, 0.5, 0.9);
-
-  if (preset === 'quiet') {
-    // 静かな環境向け: 開始の取りこぼしを減らし、終端の粘りを抑える
-    probabilityBase = clamp(probabilityBase - 0.07, 0.2, 0.6);
-    // v6モデルは確率の立ち下がりがシャープなので保持を控えめにする
-    probabilityHysteresis = clamp(probabilityHysteresis + 0.12, 0.6, 0.95);
-    hysteresisRatio = clamp(hysteresisRatio + 0.03, 0.6, 0.95);
-    holdFrames = 0;
-  }
-
+  // --- RMS 閾値（Silero フォールバック用） ---
+  const baseThreshold = preset === 'quiet' ? 0.03 : preset === 'noisy' ? 0.08 : 0.05;
+  const startThreshold = clamp(baseThreshold * (1 - 0.4 * stability) * thresholdGain, 0.005, 0.5);
+  const hysteresisRatio = clamp(0.85 - 0.25 * stability, 0.55, 0.9);
   const endThreshold = startThreshold * hysteresisRatio;
+  const aggressiveness = preset === 'quiet' ? 1 : preset === 'noisy' ? 3 : 2;
 
   return {
     startThreshold,

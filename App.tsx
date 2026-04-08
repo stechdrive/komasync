@@ -571,17 +571,11 @@ export default function App() {
     });
   }, []);
 
-  const applyVadAutoTuningFromFrames = useCallback((framesList: FrameData[][]) => {
-    if (!isVadAuto) return;
-    const eligibleFrames = framesList.filter(
-      (frames) => frames.length >= MIN_AUTO_TUNE_FRAMES && frames.some((frame) => frame.volume > 0)
-    );
-    if (eligibleFrames.length === 0) return;
-
-    const autoTuning = computeVadAutoTuning(eligibleFrames, FPS, MIN_AUTO_TUNE_FRAMES);
-    setVadThresholdScale(autoTuning.thresholdScale);
-    setVadStability(autoTuning.stability);
-  }, [isVadAuto]);
+  const applyVadAutoTuningFromFrames = useCallback((_framesList: FrameData[][]) => {
+    // Auto-tuning は無効化: Silero v6 公式推奨パラメータをそのまま使う。
+    // thresholdScale / stability を録音ごとに書き換えると判定がブレるため、
+    // 固定値（thresholdScale=1, stability=0.4）で運用する。
+  }, []);
 
   const getFrameCountFromBuffer = useCallback((audioBuffer: AudioBuffer | null): number => {
     if (!audioBuffer) return 0;
