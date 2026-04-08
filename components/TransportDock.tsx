@@ -74,6 +74,37 @@ export const TransportDock: React.FC<TransportDockProps> = ({
       {isMobileLayout ? (
         <div className="overflow-x-auto overscroll-x-contain px-3 py-2">
           <div className="flex min-w-max items-center gap-2">
+            <button
+              type="button"
+              disabled={!canRecordToggle}
+              onClick={isRecording ? onStopRecording : onStartRecording}
+              {...tooltipProps}
+              className={`flex h-[var(--control-size)] w-[var(--control-size)] shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                !canRecordToggle
+                  ? 'border-gray-200 bg-gray-100 opacity-50'
+                  : isRecording
+                    ? 'border-red-500 bg-red-50 text-red-600'
+                    : isPreparing
+                      ? 'border-amber-400 bg-amber-50 text-amber-700'
+                      : 'border-gray-200 bg-white text-red-500 hover:border-indigo-400 hover:bg-indigo-50'
+              }`}
+              title={
+                isRecording
+                  ? t('transport.recordStop')
+                  : isPreparing
+                    ? t('transport.recordPreparing')
+                    : isBusy
+                      ? t('transport.recordProcessing')
+                      : t('transport.recordStart')
+              }
+            >
+              {isRecording ? (
+                <StopCircle className="h-[var(--control-icon)] w-[var(--control-icon)]" />
+              ) : (
+                <Mic className="h-[var(--control-icon)] w-[var(--control-icon)]" />
+              )}
+            </button>
+
             <div className="flex shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-1">
               <button
                 type="button"

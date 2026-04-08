@@ -318,7 +318,6 @@ export default function App() {
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
   const inputTestAbortRef = useRef<AbortController | null>(null);
-  const lastAutoTuneRef = useRef<Map<string, AudioBuffer | null>>(new Map());
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
   const vuSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -535,30 +534,17 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => {
+  const applyVadAutoTuningFromFrames = useCallback((framesList: FrameData[][]) => {
     if (!isVadAuto) return;
-    const eligibleTracks = tracks.filter(
-      (track) =>
-        track.audioBuffer &&
-        track.frames.length >= MIN_AUTO_TUNE_FRAMES &&
-        track.frames.some((frame) => frame.volume > 0)
+    const eligibleFrames = framesList.filter(
+      (frames) => frames.length >= MIN_AUTO_TUNE_FRAMES && frames.some((frame) => frame.volume > 0)
     );
-    if (eligibleTracks.length === 0) return;
+    if (eligibleFrames.length === 0) return;
 
-    const shouldTune = eligibleTracks.some(
-      (track) => lastAutoTuneRef.current.get(track.id) !== track.audioBuffer
-    );
-    if (!shouldTune) return;
-
-    const autoTuning = computeVadAutoTuning(
-      eligibleTracks.map((track) => track.frames),
-      FPS,
-      MIN_AUTO_TUNE_FRAMES
-    );
-    lastAutoTuneRef.current = new Map(eligibleTracks.map((track) => [track.id, track.audioBuffer]));
+    const autoTuning = computeVadAutoTuning(eligibleFrames, FPS, MIN_AUTO_TUNE_FRAMES);
     setVadThresholdScale(autoTuning.thresholdScale);
     setVadStability(autoTuning.stability);
-  }, [isVadAuto, tracks]);
+  }, [isVadAuto]);
 
   const getFrameCountFromBuffer = useCallback((audioBuffer: AudioBuffer | null): number => {
     if (!audioBuffer) return 0;
@@ -700,7 +686,6 @@ export default function App() {
     if (nextValue) {
       clearVadThresholdCommitTimer();
       vadThresholdHistoryRef.current = null;
-      lastAutoTuneRef.current = new Map();
       setVadThresholdScale(AUTO_VAD_BASE_THRESHOLD_SCALE);
       setVadStability(AUTO_VAD_BASE_STABILITY);
     }
@@ -1400,6 +1385,7 @@ export default function App() {
         }
         return overwriteFramesAtFrame(track.frames, clipVadFrames, insertAtFrame, FPS);
       })();
+      applyVadAutoTuningFromFrames([clipVadFrames]);
       saveToHistory(); // 変更が確定する直前で履歴に保存する
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
@@ -2518,6 +2504,7 @@ export default function App() {
     <AppShell
       top={
         <TopBar
+          isMobileLayout={isMobileUi}
           sheetNumber={sheetNumber}
           totalTimecode={totalTimecode}
           currentTimecode={currentTimecode}
@@ -2604,34 +2591,7 @@ export default function App() {
 
       {isMobileUi && (
         <div className="pointer-events-none touch-no-select absolute right-3 bottom-3 z-30">
-          <div className="pointer-events-auto flex items-center gap-2">
-            <button
-              type="button"
-              disabled={!canRecordToggle}
-              onClick={() => {
-                setMobileInteractionMode('navigate');
-                if (isRecording) {
-                  handleStopRecording();
-                } else {
-                  void handleStartRecording();
-                }
-              }}
-              className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-lg transition-colors ${
-                canRecordToggle
-                  ? isRecording
-                    ? 'border-red-600 bg-red-50'
-                    : 'border-red-200 bg-white'
-                  : 'border-gray-200 bg-gray-100 opacity-60'
-              }`}
-              title={isRecording ? t('transport.recordStop') : t('transport.recordStart')}
-            >
-              {isRecording ? (
-                <span className="h-4 w-4 rounded-sm bg-red-600" />
-              ) : (
-                <span className="h-4 w-4 rounded-full bg-red-500" />
-              )}
-            </button>
-
+          <div className="pointer-events-auto flex items-center">
             <button
               type="button"
               disabled={!canPlayToggle}
