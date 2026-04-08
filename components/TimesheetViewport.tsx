@@ -49,6 +49,8 @@ const MOBILE_PLAYHEAD_LANE_WIDTH = 28;
 const MOBILE_PLAYHEAD_LANE_GAP = 8;
 const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 6;
+const MOBILE_SIDEBAR_WIDTH =
+  MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_PLAYHEAD_LANE_GAP + MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET;
 
 const normalizeSelectionRange = (range: SelectionRange): SelectionRange => {
   const startFrame = Math.max(0, Math.floor(Math.min(range.startFrame, range.endFrame)));
@@ -2140,10 +2142,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   };
 
   return (
-    <div className="touch-no-select relative h-full w-full bg-gray-100 select-none">
+    <div
+      className={`touch-no-select relative h-full w-full bg-gray-100 select-none ${
+        isMobileTimesheetLayout ? 'flex flex-row' : ''
+      }`}
+    >
       <div
         ref={scrollRef}
-        className={`h-full w-full overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain ${isMobileTimesheetLayout ? 'snap-none' : 'snap-x snap-proximity'} ${isMouseSelectionCursorVisible ? 'cursor-none' : 'cursor-default'}`}
+        className={`overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain ${
+          isMobileTimesheetLayout ? 'h-full min-w-0 flex-1 snap-none' : 'h-full w-full snap-x snap-proximity'
+        } ${isMouseSelectionCursorVisible ? 'cursor-none' : 'cursor-default'}`}
         onClick={handleBackdropClick}
         onContextMenu={handleContextMenu}
         onPointerDown={handlePointerDown}
@@ -2153,19 +2161,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         onPointerLeave={handlePointerLeave}
         style={{
           touchAction: touchActionValue,
-          ...(isMobileTimesheetLayout
-            ? {
-                position: 'absolute',
-                top: 0,
-                right:
-                  MOBILE_SCRUB_RAIL_WIDTH +
-                  MOBILE_PLAYHEAD_LANE_WIDTH +
-                  MOBILE_SCRUB_RAIL_OFFSET +
-                  MOBILE_PLAYHEAD_LANE_GAP,
-                bottom: 0,
-                left: 0,
-              }
-            : {}),
         }}
       >
         <div
@@ -2245,38 +2240,39 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       </div>
       {isMobileTimesheetLayout && (
         <div
-          className="pointer-events-none absolute top-0 bottom-0 z-20 border-l border-r border-red-100 bg-white shadow-[-2px_0_8px_rgba(15,23,42,0.04)]"
-          style={{
-            width: `${MOBILE_PLAYHEAD_LANE_WIDTH}px`,
-            right: `${MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET}px`,
-          }}
-        >
-          {currentFrameRailOffset !== null && currentFrameRailOffset >= -8 && currentFrameRailOffset <= viewportHeight + 8 && (
-            <div
-              className="absolute left-0 right-0 -translate-y-1/2"
-              style={{ top: `${currentFrameRailOffset}px` }}
-            >
-              <div
-                className={`absolute left-1 right-2 top-1/2 -translate-y-1/2 border-t ${isMobileScrubRailActive ? 'border-red-500' : 'border-red-300'}`}
-              />
-              <div
-                className={`absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 shadow-sm ${isMobileScrubRailActive ? 'border-red-700 bg-red-500' : 'border-red-400 bg-white'}`}
-              />
-            </div>
-          )}
-        </div>
-      )}
-      {isMobileTimesheetLayout && (
-        <div
           ref={mobileScrubRailRef}
-          className="absolute top-0 bottom-0 right-0 z-20 overflow-hidden rounded-l-xl border-l border-gray-300 bg-white/92 shadow-[-4px_0_12px_rgba(15,23,42,0.08)]"
-          style={{ width: `${MOBILE_SCRUB_RAIL_WIDTH}px`, touchAction: 'none', right: `${MOBILE_SCRUB_RAIL_OFFSET}px` }}
+          className="relative z-20 h-full shrink-0 border-l border-gray-300 bg-white/92 shadow-[-4px_0_12px_rgba(15,23,42,0.08)]"
+          style={{ width: `${MOBILE_SIDEBAR_WIDTH}px`, touchAction: 'none' }}
           onPointerDown={handleMobileRailPointerDown}
           onPointerMove={handleMobileRailPointerMove}
           onPointerUp={handleMobileRailPointerUp}
           onPointerCancel={handleMobileRailPointerCancel}
         >
-          <div className="pointer-events-none absolute inset-0">
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 left-0 border-r border-red-100 bg-white shadow-[-2px_0_8px_rgba(15,23,42,0.04)]"
+            style={{ width: `${MOBILE_PLAYHEAD_LANE_WIDTH}px` }}
+          >
+            {currentFrameRailOffset !== null && currentFrameRailOffset >= -8 && currentFrameRailOffset <= viewportHeight + 8 && (
+              <div
+                className="absolute left-0 right-0 -translate-y-1/2"
+                style={{ top: `${currentFrameRailOffset}px` }}
+              >
+                <div
+                  className={`absolute left-1 right-2 top-1/2 -translate-y-1/2 border-t ${isMobileScrubRailActive ? 'border-red-500' : 'border-red-300'}`}
+                />
+                <div
+                  className={`absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 shadow-sm ${isMobileScrubRailActive ? 'border-red-700 bg-red-500' : 'border-red-400 bg-white'}`}
+                />
+              </div>
+            )}
+          </div>
+          <div
+            className="pointer-events-none absolute top-0 bottom-0 overflow-hidden rounded-l-xl border-l border-gray-300 bg-white/92"
+            style={{
+              left: `${MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_PLAYHEAD_LANE_GAP}px`,
+              width: `${MOBILE_SCRUB_RAIL_WIDTH}px`,
+            }}
+          >
             <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-white via-white/90 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white via-white/90 to-transparent" />
             {mobileRailTicks.map((tick) => (
