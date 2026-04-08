@@ -288,6 +288,9 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
             frameNumInColumn === 1 ||
             (labelStep > 1 && frameNumInColumn % labelStep === 0);
           const localFrameNumber = columnOffset + frameNumInColumn;
+          const leftRulerLabel = isCurrent && isMobileLayout
+            ? formatTimecodeOneBased(globalFrameIndex, fps)
+            : localFrameNumber;
 
           const isPastEnd = pastEndStartRow !== null ? rowIndex >= pastEndStartRow : false;
           const isEndBoundary = endBoundaryRow !== null && rowIndex === endBoundaryRow;
@@ -309,7 +312,7 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
                 className={`flex items-center justify-center font-mono select-none overflow-hidden leading-none cursor-ns-resize ${rulerBorder} ${rulerTone} border-r border-gray-300`}
                 style={{ fontSize: `${rulerFontSize}px`, lineHeight: 1, touchAction }}
               >
-                {showFrameLabel || isCurrent ? localFrameNumber : ''}
+                {showFrameLabel || isCurrent ? leftRulerLabel : ''}
               </div>
 
               {/* トラック */}

@@ -676,11 +676,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, [currentFrame, isMobileTimesheetLayout, rowHeight, scrollTop]);
   const mobileRailTicks = useMemo(() => {
     if (!isMobileTimesheetLayout || rowHeight <= 0 || viewportHeight <= 0) return [];
-    const firstFrame = Math.max(0, Math.floor(scrollTop / rowHeight));
-    const visibleFrames = Math.ceil(viewportHeight / rowHeight) + 2;
+    const firstFrame = Math.max(0, Math.floor(scrollTop / rowHeight) - 1);
+    const visibleFrames = Math.ceil(viewportHeight / rowHeight) + 3;
     return Array.from({ length: visibleFrames }, (_, index) => {
       const frame = firstFrame + index;
-      const top = frame * rowHeight - scrollTop;
+      const top = (frame + 1) * rowHeight - scrollTop;
       const frameInSecond = (frame % fps) + 1;
       const half = Math.floor(fps / 2);
       const isSecond = frameInSecond % fps === 0;
