@@ -84,10 +84,10 @@ export const getVadTuning = (preset: VadPreset, stability01: number, thresholdSc
   if (preset === 'quiet') {
     // 静かな環境向け: 開始の取りこぼしを減らし、終端の粘りを抑える
     probabilityBase = clamp(probabilityBase - 0.07, 0.2, 0.6);
-    // 終端の厳しさは「従来」と「厳しめ」の中間に戻す
-    probabilityHysteresis = clamp(probabilityHysteresis + 0.05, 0.6, 0.95);
+    // v6モデルは確率の立ち下がりがシャープなので保持を控えめにする
+    probabilityHysteresis = clamp(probabilityHysteresis + 0.12, 0.6, 0.95);
     hysteresisRatio = clamp(hysteresisRatio + 0.03, 0.6, 0.95);
-    holdFrames = Math.max(1, Math.round(holdFrames * 0.85));
+    holdFrames = Math.max(1, Math.round(holdFrames * 0.5));
   }
 
   const endThreshold = startThreshold * hysteresisRatio;
