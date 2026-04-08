@@ -11,6 +11,7 @@ type TimesheetViewportProps = {
   currentFrame: number;
   virtualMaxFrames: number;
   editTarget: EditTarget;
+  mobileInteractionMode?: 'navigate' | 'select';
   selection: SelectionRange | null;
   t: Translator;
   fps: number;
@@ -45,6 +46,7 @@ const EDGE_SCROLL_OFFSET = 10;
 const OVERSCAN_COLUMNS = 3;
 const VISIBLE_COLUMNS = 2;
 const MOBILE_PLAYHEAD_LANE_WIDTH = 28;
+const MOBILE_PLAYHEAD_LANE_GAP = 8;
 const MOBILE_SCRUB_RAIL_WIDTH = 44;
 const MOBILE_SCRUB_RAIL_OFFSET = 6;
 
@@ -53,6 +55,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   currentFrame,
   virtualMaxFrames: virtualMaxFramesProp,
   editTarget,
+  mobileInteractionMode = 'navigate',
   selection,
   t,
   fps,
@@ -182,8 +185,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, []);
   const isZoomed = zoom > 1;
   const isAutoScrollEnabled = isAutoScrollActive || isScrubbing;
-  const allowSingleFingerPan = !isIOS && !isZoomed;
-  const touchActionValue: React.CSSProperties['touchAction'] = isZoomed ? 'none' : isIOS ? 'pan-x pan-y' : 'none';
   const pointerEdgeEpsilon = isIOS ? 0 : 1;
   const isCoarsePointer = useMemo(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -216,7 +217,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1, virtualMaxFramesProp ?? 0);
   const totalColumns = Math.max(2, Math.ceil(virtualMaxFrames / framesPerColumn));
   const isMobileTimesheetLayout = isCoarsePointer && viewportWidth > 0 && viewportWidth < 900;
+  const isMobileSelectionMode = isMobileTimesheetLayout && mobileInteractionMode === 'select';
   const visibleColumnCount = isMobileTimesheetLayout ? 1 : VISIBLE_COLUMNS;
+  const allowSingleFingerPan = !isIOS && !isZoomed;
+  const touchActionValue: React.CSSProperties['touchAction'] = isMobileSelectionMode
+    ? 'none'
+    : isZoomed
+      ? 'none'
+      : isIOS
+        ? 'pan-x pan-y'
+        : 'none';
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1611,7 +1621,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           x: e.clientX,
           y: e.clientY,
         };
-        selectionAnchorRef.current = target.frame;
+        if (isMobileSelectionMode || !isMobileTimesheetLayout) {
+          selectionAnchorRef.current = target.frame;
+        }
         startLongPressMenu(e, target);
         return;
       }
@@ -1754,6 +1766,26 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
 
     const pendingTouch = pendingTapRef.current;
+    if (
+      pendingTouch &&
+      pendingTouch.pointerType === 'touch' &&
+      selectionAnchorRef.current === null &&
+      isMobileTimesheetLayout
+    ) {
+      const dx = e.clientX - pendingTouch.x;
+      const dy = e.clientY - pendingTouch.y;
+      if (Math.hypot(dx, dy) > 6) {
+        pendingTapRef.current = null;
+        clearLongPressTimer();
+        longPressPointRef.current = null;
+        if (allowSingleFingerPan) {
+          startPan(e);
+          updatePan(e);
+        }
+        return;
+      }
+    }
+
     if (
       pendingTouch &&
       pendingTouch.pointerType === 'touch' &&
@@ -1930,7 +1962,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       onSelectionChange?.(null);
     }
 
-    if (pending.pointerType !== 'mouse' && !hitSelection) {
+    const shouldCreateTouchSelection = pending.pointerType !== 'mouse' && (!isMobileTimesheetLayout || isMobileSelectionMode);
+    if (shouldCreateTouchSelection && !hitSelection) {
       const range = { startFrame: pending.frame, endFrame: pending.frame };
       selectionRangeRef.current = range;
       onSelectionChange?.(range);
@@ -1939,11 +1972,16 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (pending.pointerType === 'mouse') {
       suppressBackdropClickRef.current = true;
     }
-    onFrameTap(pending.frame);
+    if (!isMobileSelectionMode || !isMobileTimesheetLayout) {
+      onFrameTap(pending.frame);
+    }
     if (pending.trackId) onTrackSelect?.(pending.trackId);
     pendingTapRef.current = null;
     selectionAnchorRef.current = null;
     stopMouseSelectionCursor();
+    if (isMobileSelectionMode && pending.pointerType !== 'mouse') {
+      onSelectionCommit?.();
+    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent) => {
@@ -1986,7 +2024,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             ? {
                 position: 'absolute',
                 top: 0,
-                right: MOBILE_SCRUB_RAIL_WIDTH + MOBILE_PLAYHEAD_LANE_WIDTH + MOBILE_SCRUB_RAIL_OFFSET,
+                right:
+                  MOBILE_SCRUB_RAIL_WIDTH +
+                  MOBILE_PLAYHEAD_LANE_WIDTH +
+                  MOBILE_SCRUB_RAIL_OFFSET +
+                  MOBILE_PLAYHEAD_LANE_GAP,
                 bottom: 0,
                 left: 0,
               }
@@ -2075,7 +2117,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       </div>
       {isMobileTimesheetLayout && (
         <div
-          className="pointer-events-none absolute top-0 bottom-0 z-20 border-l border-red-100/80 bg-red-50/65"
+          className="pointer-events-none absolute top-0 bottom-0 z-20 border-l border-r border-red-100 bg-white shadow-[-2px_0_8px_rgba(15,23,42,0.04)]"
           style={{
             width: `${MOBILE_PLAYHEAD_LANE_WIDTH}px`,
             right: `${MOBILE_SCRUB_RAIL_WIDTH + MOBILE_SCRUB_RAIL_OFFSET}px`,

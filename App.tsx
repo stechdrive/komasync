@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { blobToAudioBuffer } from './services/audioProcessor';
 import {
   cutAudioRangeWithSilence,
@@ -182,6 +183,7 @@ const areSelectionRangesEqual = (a: SelectionRange | null, b: SelectionRange | n
 };
 
 export default function App() {
+  const [mobileInteractionMode, setMobileInteractionMode] = useState<'navigate' | 'select'>('navigate');
   const [recordingState, setRecordingState] = useState<RecordingState>(RecordingState.IDLE);
   const [language, setLanguage] = useState<Language>(() => getInitialLanguage());
   const { t, list: tList } = useMemo(() => createI18n(language), [language]);
@@ -878,6 +880,7 @@ export default function App() {
   
   const handleBackgroundClick = () => {
     clearSelectionImmediate();
+    setMobileInteractionMode('navigate');
   };
 
   const handleOpenMuteMenu = useCallback((point: { x: number; y: number }) => {
@@ -2137,6 +2140,7 @@ export default function App() {
 
   const handleSelectionCommit = useCallback(() => {
     flushSelectionUpdates();
+    setMobileInteractionMode('navigate');
   }, [flushSelectionUpdates]);
 
   const handleOpenSelectionMenu = useCallback(
@@ -2590,6 +2594,12 @@ export default function App() {
 
   const totalTimecode = formatTimecode(maxFrames, FPS);
   const hasAudio = tracks.some((t) => t.audioBuffer !== null);
+  const isRecording = recordingState === RecordingState.RECORDING;
+  const isPlaying = recordingState === RecordingState.PLAYING;
+  const isBusy = recordingState === RecordingState.PROCESSING;
+  const isPreparing = isMicPreparing && !isRecording;
+  const canRecordToggle = !isBusy && !isPreparing;
+  const canPlayToggle = hasAudio && !isBusy && !isRecording;
   const mutedCount = tracks.filter((track) => track.isMuted).length;
   const isZoomOutDisabled = sheetZoom <= MIN_SHEET_ZOOM + 0.001;
   const isZoomInDisabled = sheetZoom >= MAX_SHEET_ZOOM - 0.001;
@@ -2644,7 +2654,9 @@ export default function App() {
           isMicReady={isMicReady}
           isMicPreparing={isMicPreparing}
           isAllTracks={editTarget === 'all'}
+          mobileInteractionMode={mobileInteractionMode}
           t={t}
+          onChangeMobileInteractionMode={setMobileInteractionMode}
           onToggleAllTracks={handleToggleAllTracks}
           onInsertOneFrame={() => void handleInsertOneFrame()}
           onDeleteOneFrame={() => void handleDeleteOneFrame()}
@@ -2662,6 +2674,7 @@ export default function App() {
         currentFrame={currentFrame}
         virtualMaxFrames={virtualMaxFrames}
         editTarget={editTarget}
+        mobileInteractionMode={mobileInteractionMode}
         selection={selection}
         t={t}
         fps={FPS}
@@ -2685,6 +2698,60 @@ export default function App() {
         onZoomChange={handleZoomChange}
         onFirstVisibleColumnChange={setViewportFirstColumn}
       />
+
+      <div className="pointer-events-none absolute right-3 bottom-3 z-30 sm:hidden">
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          <button
+            type="button"
+            disabled={!canRecordToggle}
+            onClick={() => {
+              setMobileInteractionMode('navigate');
+              if (isRecording) {
+                handleStopRecording();
+              } else {
+                void handleStartRecording();
+              }
+            }}
+            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+              canRecordToggle
+                ? isRecording
+                  ? 'border-red-600 bg-red-50'
+                  : 'border-red-200 bg-white'
+                : 'border-gray-200 bg-gray-100 opacity-60'
+            }`}
+            title={isRecording ? t('transport.recordStop') : t('transport.recordStart')}
+          >
+            {isRecording ? (
+              <span className="h-3.5 w-3.5 rounded-sm bg-red-600" />
+            ) : (
+              <span className="h-4 w-4 rounded-full bg-red-500" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canPlayToggle}
+            onClick={() => {
+              setMobileInteractionMode('navigate');
+              if (isPlaying) {
+                handlePause();
+              } else {
+                handlePlay();
+              }
+            }}
+            className={`flex h-14 w-14 items-center justify-center rounded-full border shadow-xl transition-colors ${
+              canPlayToggle ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-100 text-gray-400'
+            }`}
+            title={isPlaying ? t('transport.pauseTitle') : t('transport.playTitle')}
+          >
+            {isPlaying ? (
+              <Pause className="h-6 w-6" />
+            ) : (
+              <Play className="h-6 w-6 translate-x-[1px]" />
+            )}
+          </button>
+        </div>
+      </div>
 
       <EditPalette
         selectionCount={selectionCount}
