@@ -3,14 +3,20 @@ import { Pause, Play } from 'lucide-react';
 import { blobToAudioBuffer } from './services/audioProcessor';
 import {
   clearAudioRangesWithSilence,
-  cutAudioRangeWithSilence,
   deleteAudioRangeRipple,
-  extractAudioRangePadded,
   extractAudioRangesPadded,
   insertAudioAtFrame,
   insertSilenceFramesAtFrame,
   overwriteAudioAtFrame,
 } from './services/audioEdit';
+import {
+  clearFrameRanges,
+  createSilentFrames,
+  deleteFrameRangeRipple,
+  extractFrameRangesPadded,
+  insertFramesAtFrame,
+  overwriteFramesAtFrame,
+} from './services/frameEdit';
 import { exportTracksToZip } from './services/audioExporter';
 import { getVadTuning, VadPreset, VadTuning } from './services/vad';
 import {
@@ -26,11 +32,9 @@ import { computeVadAutoTuning } from './services/vadAutoTuner';
 import {
   applyOverrideRange,
   applyOverrideRanges,
-  clearOverrideRange,
   clearOverrideRanges,
   createSpeechOverrides,
   deleteOverrideRange,
-  extractOverrideRange,
   extractOverrideRanges,
   insertOverrideRange,
   overwriteOverrideRange,
@@ -271,7 +275,6 @@ export default function App() {
   const virtualMaxFramesRef = useRef(0);
   const [virtualMaxFrames, setVirtualMaxFrames] = useState(0);
 
-  const tracksRef = useRef(tracks);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -295,8 +298,6 @@ export default function App() {
   const vadThresholdHistoryRef = useRef<{ startValue: number } | null>(null);
   const vadThresholdCommitTimerRef = useRef<number | null>(null);
   const inputTestAbortRef = useRef<AbortController | null>(null);
-  const vadReprocessIdRef = useRef(0);
-  const vadRequestIdRef = useRef<Map<string, number>>(new Map());
   const lastAutoTuneRef = useRef<Map<string, AudioBuffer | null>>(new Map());
 
   const vuAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -448,10 +449,6 @@ export default function App() {
   }, [commitSelectionState]);
 
   useEffect(() => {
-    tracksRef.current = tracks;
-  }, [tracks]);
-
-  useEffect(() => {
     recordingStateRef.current = recordingState;
   }, [recordingState]);
 
@@ -517,21 +514,6 @@ export default function App() {
     setVadStability(autoTuning.stability);
   }, [isVadAuto, tracks]);
 
-  const createEmptyFrames = useCallback((audioBuffer: AudioBuffer | null): FrameData[] => {
-    if (!audioBuffer) return [];
-    const totalFrames = Math.round((audioBuffer.length * FPS) / audioBuffer.sampleRate);
-    const frames: FrameData[] = [];
-    for (let i = 0; i < totalFrames; i++) {
-      frames.push({
-        frameIndex: i,
-        time: i / FPS,
-        volume: 0,
-        isSpeech: false,
-      });
-    }
-    return frames;
-  }, []);
-
   const getFrameCountFromBuffer = useCallback((audioBuffer: AudioBuffer | null): number => {
     if (!audioBuffer) return 0;
     return Math.round((audioBuffer.length * FPS) / audioBuffer.sampleRate);
@@ -553,144 +535,67 @@ export default function App() {
     return volumes[index] ?? volumes[volumes.length - 1] ?? 0;
   }, []);
 
-  const scheduleVadAnalysis = useCallback((
-    trackId: string,
-    audioBuffer: AudioBuffer,
-    tuning: VadTuning,
-    options?: { refreshWaveformReference?: boolean }
-  ) => {
-    const bufferRef = audioBuffer;
-    const tuningToken = vadReprocessIdRef.current;
-    const requestId = (vadRequestIdRef.current.get(trackId) ?? 0) + 1;
-    vadRequestIdRef.current.set(trackId, requestId);
-    void analyzeAudioBufferWithSileroVadEngine(bufferRef, FPS, tuning)
-      .then(({ frames, debug }) => {
-        if (import.meta.env.DEV) {
-          // VAD結果のデバッグ（開発時のみ）
-          const total = frames.length;
-          let speechCount = 0;
-          let maxVolume = 0;
-          let maxSpeechRun = 0;
-          let currentRun = 0;
-          frames.forEach((frame) => {
-            if (frame.volume > maxVolume) maxVolume = frame.volume;
-            if (frame.isSpeech) {
-              speechCount += 1;
-              currentRun += 1;
-              if (currentRun > maxSpeechRun) maxSpeechRun = currentRun;
-            } else {
-              currentRun = 0;
-            }
-          });
-          const ratio = total > 0 ? speechCount / total : 0;
-          const status = getSileroVadStatus();
-          console.info(
-            `[VAD] track=${trackId} total=${total} speech=${speechCount} ratio=${ratio.toFixed(3)} maxVol=${maxVolume.toFixed(5)} maxRun=${maxSpeechRun} status=${status}`
-          );
-          if (typeof window !== 'undefined') {
-            const debugTarget = window as Window & {
-              __vadDebug?: Record<
-                string,
-                {
-                  frames: FrameData[];
-                  summary: {
-                    total: number;
-                    speechCount: number;
-                    ratio: number;
-                    maxVolume: number;
-                    maxSpeechRun: number;
-                    status: string;
-                  };
-                  workerDebug?: unknown;
-                }
-              >;
-            };
-            if (!debugTarget.__vadDebug) debugTarget.__vadDebug = {};
-            debugTarget.__vadDebug[trackId] = {
-              frames,
-              summary: {
-                total,
-                speechCount,
-                ratio,
-                maxVolume,
-                maxSpeechRun,
-                status,
-              },
-              workerDebug: debug,
-            };
+  const analyzeVadFrames = useCallback(
+    async (trackId: string, audioBuffer: AudioBuffer, tuning: VadTuning): Promise<FrameData[]> => {
+      const { frames, debug } = await analyzeAudioBufferWithSileroVadEngine(audioBuffer, FPS, tuning);
+      if (import.meta.env.DEV) {
+        const total = frames.length;
+        let speechCount = 0;
+        let maxVolume = 0;
+        let maxSpeechRun = 0;
+        let currentRun = 0;
+        frames.forEach((frame) => {
+          if (frame.volume > maxVolume) maxVolume = frame.volume;
+          if (frame.isSpeech) {
+            speechCount += 1;
+            currentRun += 1;
+            if (currentRun > maxSpeechRun) maxSpeechRun = currentRun;
+          } else {
+            currentRun = 0;
           }
-        }
-        if (vadReprocessIdRef.current !== tuningToken) return;
-        if (vadRequestIdRef.current.get(trackId) !== requestId) return;
-        setTracks((prev) =>
-          prev.map((track) => {
-            if (track.id !== trackId) return track;
-            return {
-              ...track,
-              frames,
-              waveformReferenceMax: options?.refreshWaveformReference
-                ? getWaveformReferenceMax(frames)
-                : track.waveformReferenceMax,
-              speechOverrides: resizeSpeechOverrides(track.speechOverrides, frames.length),
-            };
-          })
+        });
+        const ratio = total > 0 ? speechCount / total : 0;
+        const status = getSileroVadStatus();
+        console.info(
+          `[VAD] track=${trackId} total=${total} speech=${speechCount} ratio=${ratio.toFixed(3)} maxVol=${maxVolume.toFixed(5)} maxRun=${maxSpeechRun} status=${status}`
         );
-      })
-      .catch((error) => {
-        console.warn('VAD解析に失敗しました。', error);
-      });
-  }, [getWaveformReferenceMax]);
-
-  // Re-process when VAD settings change
-  useEffect(() => {
-    // VAD設定は非破壊の表示変更なので、履歴は別ロジックで管理する。
-    // ここでは派生 frames の再生成のみを行う。
-    type VadAnalysisResult = { id: string; buffer: AudioBuffer; frames: FrameData[] };
-    const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-    const requestId = vadReprocessIdRef.current + 1;
-    vadReprocessIdRef.current = requestId;
-    const snapshot = tracksRef.current;
-
-    const run = async () => {
-      const results = await Promise.all(
-        snapshot.map(async (track): Promise<VadAnalysisResult | null> => {
-          if (!track.audioBuffer) return null;
-          try {
-            const { frames } = await analyzeAudioBufferWithSileroVadEngine(track.audioBuffer, FPS, tuning);
-            return { id: track.id, buffer: track.audioBuffer, frames };
-          } catch (error) {
-            console.warn('VAD解析に失敗しました。', error);
-            return null;
-          }
-        })
-      );
-
-      if (vadReprocessIdRef.current !== requestId) return;
-
-      const resultMap = new Map<string, VadAnalysisResult>(
-        results
-          .filter((result): result is VadAnalysisResult => result !== null)
-          .map((result) => [result.id, result])
-      );
-
-      setTracks((prevTracks) =>
-        prevTracks.map((track) => {
-          if (!track.audioBuffer) return { ...track, frames: [], speechOverrides: [] };
-          const match = resultMap.get(track.id);
-          if (match && match.buffer === track.audioBuffer) {
-            return {
-              ...track,
-              frames: match.frames,
-              speechOverrides: resizeSpeechOverrides(track.speechOverrides, match.frames.length),
-            };
-          }
-          return track;
-        })
-      );
-    };
-
-    void run();
-  }, [vadPreset, vadStability, vadThresholdScale]);
+        if (typeof window !== 'undefined') {
+          const debugTarget = window as Window & {
+            __vadDebug?: Record<
+              string,
+              {
+                frames: FrameData[];
+                summary: {
+                  total: number;
+                  speechCount: number;
+                  ratio: number;
+                  maxVolume: number;
+                  maxSpeechRun: number;
+                  status: string;
+                };
+                workerDebug?: unknown;
+              }
+            >;
+          };
+          if (!debugTarget.__vadDebug) debugTarget.__vadDebug = {};
+          debugTarget.__vadDebug[trackId] = {
+            frames,
+            summary: {
+              total,
+              speechCount,
+              ratio,
+              maxVolume,
+              maxSpeechRun,
+              status,
+            },
+            workerDebug: debug,
+          };
+        }
+      }
+      return frames;
+    },
+    []
+  );
 
   // --- History Management ---
   const HISTORY_LIMIT = 30;
@@ -773,37 +678,17 @@ export default function App() {
 
     setHistoryFuture(prev => [futureEntry, ...prev]);
     if (previous.kind === 'tracks') {
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const nextTracks = previous.tracks.map((track) =>
-        track.audioBuffer
-          ? {
-              ...track,
-              frames: createEmptyFrames(track.audioBuffer),
-              speechOverrides: resizeSpeechOverrides(track.speechOverrides, getFrameCountFromBuffer(track.audioBuffer)),
-            }
-          : { ...track, frames: [], speechOverrides: [] }
-      );
-      setTracks(nextTracks);
+      setTracks(previous.tracks);
       // Reset selection to avoid ghost selections
       clearSelectionImmediate();
-      nextTracks.forEach((track) => {
-        if (track.audioBuffer) {
-          scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
-        }
-      });
     } else {
       setVadThresholdScale(previous.value);
     }
     setHistoryPast(newPast);
   }, [
     clearSelectionImmediate,
-    createEmptyFrames,
-    getFrameCountFromBuffer,
     historyPast,
-    scheduleVadAnalysis,
     tracks,
-    vadPreset,
-    vadStability,
     vadThresholdScale,
   ]);
 
@@ -820,36 +705,16 @@ export default function App() {
 
     setHistoryPast(prev => [...prev, pastEntry]);
     if (next.kind === 'tracks') {
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const nextTracks = next.tracks.map((track) =>
-        track.audioBuffer
-          ? {
-              ...track,
-              frames: createEmptyFrames(track.audioBuffer),
-              speechOverrides: resizeSpeechOverrides(track.speechOverrides, getFrameCountFromBuffer(track.audioBuffer)),
-            }
-          : { ...track, frames: [], speechOverrides: [] }
-      );
-      setTracks(nextTracks);
+      setTracks(next.tracks);
       clearSelectionImmediate();
-      nextTracks.forEach((track) => {
-        if (track.audioBuffer) {
-          scheduleVadAnalysis(track.id, track.audioBuffer, tuning);
-        }
-      });
     } else {
       setVadThresholdScale(next.value);
     }
     setHistoryFuture(newFuture);
   }, [
     clearSelectionImmediate,
-    createEmptyFrames,
-    getFrameCountFromBuffer,
     historyFuture,
-    scheduleVadAnalysis,
     tracks,
-    vadPreset,
-    vadStability,
     vadThresholdScale,
   ]);
 
@@ -861,9 +726,6 @@ export default function App() {
         stopVuMeter();
         stopMicStream();
         cancelAnimationFrame(animationFrameRef.current);
-        vadReprocessIdRef.current += 1;
-        vadRequestIdRef.current.clear();
-        
         // Reset all states
         setTracks(createInitialTracks());
         setHistoryPast([]);
@@ -1472,6 +1334,7 @@ export default function App() {
       }
 
       const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
+      const clipVadFrames = await analyzeVadFrames(trackId, newClipBuffer, tuning);
       const clipFrames = getFrameCountFromBuffer(newClipBuffer);
       const nextOverrides = (() => {
         if (!track || !track.audioBuffer) {
@@ -1485,14 +1348,19 @@ export default function App() {
         const overwritten = overwriteOverrideRange(baseOverrides, insertAtFrame, clearedSlice);
         return resizeSpeechOverrides(overwritten, getFrameCountFromBuffer(finalBuffer));
       })();
+      const nextFrames = (() => {
+        if (!track) {
+          return overwriteFramesAtFrame([], clipVadFrames, insertAtFrame, FPS);
+        }
+        return overwriteFramesAtFrame(track.frames, clipVadFrames, insertAtFrame, FPS);
+      })();
       saveToHistory(); // 変更が確定する直前で履歴に保存する
       updateTrack(trackId, {
         audioBuffer: finalBuffer,
-        frames: createEmptyFrames(finalBuffer),
+        frames: nextFrames,
         speechOverrides: nextOverrides,
-        waveformReferenceMax: track?.waveformReferenceMax ?? 0,
+        waveformReferenceMax: getWaveformReferenceMax(nextFrames),
       });
-      scheduleVadAnalysis(trackId, finalBuffer, tuning, { refreshWaveformReference: true });
 
       setRecordingState(RecordingState.IDLE);
       // Do not reset current frame to 0, let user stay where they are or seek manually
@@ -1599,11 +1467,9 @@ export default function App() {
       const nextClipboard: ClipboardClip = {
         kind: editTarget === 'all' ? 'all' : 'single',
         byTrackId: {},
+        framesByTrackId: {},
         speechOverridesByTrackId: {},
       };
-
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
 
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
@@ -1612,28 +1478,19 @@ export default function App() {
           sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
+        nextClipboard.framesByTrackId[track.id] = extractFrameRangesPadded(track.frames, ranges, FPS);
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
         nextClipboard.speechOverridesByTrackId[track.id] = extractOverrideRanges(baseOverrides, ranges);
 
-        if (!track.audioBuffer) {
-          return {
-            ...track,
-            speechOverrides: clearOverrideRanges(baseOverrides, ranges),
-          };
-        }
-
-        const newBuffer = clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS);
-        pendingVad.push({ id: track.id, buffer: newBuffer });
         return {
           ...track,
-          audioBuffer: newBuffer,
-          frames: createEmptyFrames(newBuffer),
+          audioBuffer: track.audioBuffer ? clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS) : track.audioBuffer,
+          frames: clearFrameRanges(track.frames, ranges, FPS),
           speechOverrides: clearOverrideRanges(baseOverrides, ranges),
         };
       });
 
       setTracks(nextTracks);
-      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       setClipboardClip(nextClipboard);
       clearSelectionImmediate();
     } catch (error) {
@@ -1642,7 +1499,6 @@ export default function App() {
     }
   }, [
     clearSelectionImmediate,
-    createEmptyFrames,
     editTarget,
     flushSelectionUpdates,
     getNormalizedSelections,
@@ -1650,12 +1506,8 @@ export default function App() {
     handlePause,
     recordingState,
     saveToHistory,
-    scheduleVadAnalysis,
     t,
     tracks,
-    vadPreset,
-    vadStability,
-    vadThresholdScale,
   ]);
 
   const handleDeleteSelection = async () => {
@@ -1670,30 +1522,18 @@ export default function App() {
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
 
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
-
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
-        if (!track.audioBuffer) {
-          return {
-            ...track,
-            speechOverrides: clearOverrideRanges(baseOverrides, ranges),
-          };
-        }
-        const newBuffer = clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS);
-        pendingVad.push({ id: track.id, buffer: newBuffer });
         return {
           ...track,
-          audioBuffer: newBuffer,
-          frames: createEmptyFrames(newBuffer),
+          audioBuffer: track.audioBuffer ? clearAudioRangesWithSilence(track.audioBuffer, ranges, FPS) : track.audioBuffer,
+          frames: clearFrameRanges(track.frames, ranges, FPS),
           speechOverrides: clearOverrideRanges(baseOverrides, ranges),
         };
       });
 
       setTracks(nextTracks);
-      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       clearSelectionImmediate();
       commitCurrentFrame(ranges[0].startFrame);
     } catch (error) {
@@ -1709,7 +1549,6 @@ export default function App() {
     try {
       saveToHistory();
       const insertFrame = currentFrameRef.current;
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
@@ -1723,27 +1562,25 @@ export default function App() {
           return;
         }
 
-        const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
         const nextTracks = tracks.map((track) => {
           const clip = clipboardClip.byTrackId[track.id];
           const clipFrameCount = getFrameCountFromBuffer(clip);
+          const clipFrames = clipboardClip.framesByTrackId[track.id] ?? createSilentFrames(clipFrameCount, FPS);
           const overrideSlice = resizeSpeechOverrides(
             clipboardClip.speechOverridesByTrackId[track.id] ?? createSpeechOverrides(clipFrameCount),
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = insertAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
-          pendingVad.push({ id: track.id, buffer: newBuffer });
           const nextOverrides = insertOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
-            frames: createEmptyFrames(newBuffer),
+            frames: insertFramesAtFrame(track.frames, clipFrames, insertFrame, FPS),
             speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
           };
         });
         setTracks(nextTracks);
-        pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
@@ -1754,6 +1591,7 @@ export default function App() {
         const nextTracks = tracks.map((track) => {
           if (track.id !== editTarget) return track;
           const clipFrameCount = getFrameCountFromBuffer(clip);
+          const clipFrames = clipboardClip.framesByTrackId[editTarget] ?? createSilentFrames(clipFrameCount, FPS);
           const overrideSlice = resizeSpeechOverrides(
             clipboardClip.speechOverridesByTrackId[editTarget] ?? createSpeechOverrides(clipFrameCount),
             clipFrameCount
@@ -1764,15 +1602,11 @@ export default function App() {
           return {
             ...track,
             audioBuffer: newBuffer,
-            frames: createEmptyFrames(newBuffer),
+            frames: insertFramesAtFrame(track.frames, clipFrames, insertFrame, FPS),
             speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
           };
         });
         setTracks(nextTracks);
-        const updatedTrack = nextTracks.find((track) => track.id === editTarget);
-        if (updatedTrack?.audioBuffer) {
-          scheduleVadAnalysis(editTarget, updatedTrack.audioBuffer, tuning);
-        }
       }
 
       clearSelectionImmediate();
@@ -1783,18 +1617,13 @@ export default function App() {
   }, [
     clipboardClip,
     clearSelectionImmediate,
-    createEmptyFrames,
     editTarget,
     getFrameCountFromBuffer,
     handlePause,
     recordingState,
     saveToHistory,
-    scheduleVadAnalysis,
     t,
     tracks,
-    vadPreset,
-    vadStability,
-    vadThresholdScale,
   ]);
 
   const handlePasteOverwrite = useCallback(async () => {
@@ -1804,7 +1633,6 @@ export default function App() {
     try {
       saveToHistory();
       const insertFrame = currentFrameRef.current;
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
 
       if (editTarget === 'all') {
         if (clipboardClip.kind !== 'all') {
@@ -1818,27 +1646,25 @@ export default function App() {
           return;
         }
 
-        const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
         const nextTracks = tracks.map((track) => {
           const clip = clipboardClip.byTrackId[track.id];
           const clipFrameCount = getFrameCountFromBuffer(clip);
+          const clipFrames = clipboardClip.framesByTrackId[track.id] ?? createSilentFrames(clipFrameCount, FPS);
           const overrideSlice = resizeSpeechOverrides(
             clipboardClip.speechOverridesByTrackId[track.id] ?? createSpeechOverrides(clipFrameCount),
             clipFrameCount
           );
           const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
           const newBuffer = overwriteAudioAtFrame(track.audioBuffer, clip, insertFrame, FPS);
-          pendingVad.push({ id: track.id, buffer: newBuffer });
           const nextOverrides = overwriteOverrideRange(baseOverrides, insertFrame, overrideSlice);
           return {
             ...track,
             audioBuffer: newBuffer,
-            frames: createEmptyFrames(newBuffer),
+            frames: overwriteFramesAtFrame(track.frames, clipFrames, insertFrame, FPS),
             speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
           };
         });
         setTracks(nextTracks);
-        pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       } else {
         const clip = clipboardClip.byTrackId[editTarget];
         if (!clip) {
@@ -1849,6 +1675,7 @@ export default function App() {
         const nextTracks = tracks.map((track) => {
           if (track.id !== editTarget) return track;
           const clipFrameCount = getFrameCountFromBuffer(clip);
+          const clipFrames = clipboardClip.framesByTrackId[editTarget] ?? createSilentFrames(clipFrameCount, FPS);
           const overrideSlice = resizeSpeechOverrides(
             clipboardClip.speechOverridesByTrackId[editTarget] ?? createSpeechOverrides(clipFrameCount),
             clipFrameCount
@@ -1859,15 +1686,11 @@ export default function App() {
           return {
             ...track,
             audioBuffer: newBuffer,
-            frames: createEmptyFrames(newBuffer),
+            frames: overwriteFramesAtFrame(track.frames, clipFrames, insertFrame, FPS),
             speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
           };
         });
         setTracks(nextTracks);
-        const updatedTrack = nextTracks.find((track) => track.id === editTarget);
-        if (updatedTrack?.audioBuffer) {
-          scheduleVadAnalysis(editTarget, updatedTrack.audioBuffer, tuning);
-        }
       }
 
       clearSelectionImmediate();
@@ -1878,18 +1701,13 @@ export default function App() {
   }, [
     clipboardClip,
     clearSelectionImmediate,
-    createEmptyFrames,
     editTarget,
     getFrameCountFromBuffer,
     handlePause,
     recordingState,
     saveToHistory,
-    scheduleVadAnalysis,
     t,
     tracks,
-    vadPreset,
-    vadStability,
-    vadThresholdScale,
   ]);
 
   const handleInsertOneFrame = async () => {
@@ -1903,28 +1721,23 @@ export default function App() {
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
 
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
-
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id)) return track;
         const newBuffer = insertSilenceFramesAtFrame(track.audioBuffer, insertFrame, 1, FPS, {
           sampleRate: track.audioBuffer?.sampleRate ?? projectSampleRate,
           numberOfChannels: track.audioBuffer?.numberOfChannels ?? 1,
         });
-        pendingVad.push({ id: track.id, buffer: newBuffer });
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
         const nextOverrides = insertOverrideRange(baseOverrides, insertFrame, createSpeechOverrides(1));
         return {
           ...track,
           audioBuffer: newBuffer,
-          frames: createEmptyFrames(newBuffer),
+          frames: insertFramesAtFrame(track.frames, createSilentFrames(1, FPS), insertFrame, FPS),
           speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
         };
       });
 
       setTracks(nextTracks);
-      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       commitCurrentFrame(currentFrameRef.current + 1);
     } catch (error) {
       console.error('Insert 1f failed:', error);
@@ -1946,26 +1759,22 @@ export default function App() {
 
       const targetIds = editTarget === 'all' ? tracks.map((t) => t.id) : [editTarget];
       const targetSet = new Set(targetIds);
-      const tuning = getVadTuning(vadPreset, vadStability, vadThresholdScale);
-      const pendingVad: { id: string; buffer: AudioBuffer }[] = [];
       const frameIndex = currentFrameRef.current;
 
       const nextTracks = tracks.map((track) => {
         if (!targetSet.has(track.id) || !track.audioBuffer) return track;
         const newBuffer = deleteAudioRangeRipple(track.audioBuffer, frameIndex, frameIndex, FPS);
-        pendingVad.push({ id: track.id, buffer: newBuffer });
         const baseOverrides = resizeSpeechOverrides(track.speechOverrides, track.frames.length);
         const nextOverrides = deleteOverrideRange(baseOverrides, frameIndex, frameIndex);
         return {
           ...track,
           audioBuffer: newBuffer,
-          frames: createEmptyFrames(newBuffer),
+          frames: deleteFrameRangeRipple(track.frames, frameIndex, frameIndex, FPS),
           speechOverrides: resizeSpeechOverrides(nextOverrides, getFrameCountFromBuffer(newBuffer)),
         };
       });
 
       setTracks(nextTracks);
-      pendingVad.forEach(({ id, buffer }) => scheduleVadAnalysis(id, buffer, tuning));
       clearSelectionImmediate();
       const nextMaxFrames = Math.max(0, ...nextTracks.map((track) => track.frames.length));
       commitCurrentFrame(Math.min(currentFrameRef.current, Math.max(0, nextMaxFrames - 1)));

@@ -3,8 +3,8 @@
 日本のアニメ制作で使われる「縦タイムシート（24FPS）」へのセリフ記入を効率化するための、ブラウザ完結の音声編集 Web アプリです。最大3トラックの録音/取り込み、フレーム単位の編集、縦シート表示、書き出しに対応します。
 EN: A browser-based audio editing app that streamlines dialogue entry on Japanese vertical timesheets (24 FPS). Supports up to 3 tracks for recording/import, frame-level editing, vertical sheet view, and exports.
 
-バージョン: 1.8.0
-Version: 1.8.0
+バージョン: 1.8.1
+Version: 1.8.1
 
 ## 主な機能 / Features
 
