@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileAudio, Headphones, ImageDown, Mic, Upload, X } from 'lucide-react';
+import { FileAudio, Headphones, HelpCircle, ImageDown, Mic, RefreshCw, Scan, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { InputTestState, Track } from '@/types';
 import { VuMeter } from '@/components/VuMeter';
 import { APP_NAME, APP_VERSION } from '@/domain/appMeta';
@@ -25,7 +25,15 @@ type MoreSheetProps = {
   isInputConfigLocked: boolean;
   t: Translator;
   playWhileRecording: boolean;
+  isResetDisabled: boolean;
+  isZoomInDisabled: boolean;
+  isZoomOutDisabled: boolean;
   onClose: () => void;
+  onOpenHelp: () => void;
+  onReset: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
   onExportAudio: () => void;
   onExportSheetImagesCurrent: () => void;
   onExportSheetImagesAll: () => void;
@@ -102,7 +110,15 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
   isInputConfigLocked,
   t,
   playWhileRecording,
+  isResetDisabled,
+  isZoomInDisabled,
+  isZoomOutDisabled,
   onClose,
+  onOpenHelp,
+  onReset,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
   onExportAudio,
   onExportSheetImagesCurrent,
   onExportSheetImagesAll,
@@ -202,6 +218,58 @@ export const MoreSheet: React.FC<MoreSheetProps> = ({
           </div>
 
           <div className="p-4 overflow-y-auto min-h-0 flex-1 space-y-4 text-[var(--ui-sm)] text-gray-700">
+            <div className="space-y-2">
+              <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.quickSection')}</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenHelp();
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
+                >
+                  <HelpCircle className="w-5 h-5" />
+                  {t('topBar.helpTitle')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onReset}
+                  disabled={isResetDisabled}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 disabled:opacity-60 disabled:cursor-default"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  {t('topBar.resetTitle')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onZoomReset}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700"
+                >
+                  <Scan className="w-5 h-5" />
+                  {t('topBar.zoomResetAria')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onZoomOut}
+                  disabled={isZoomOutDisabled}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 disabled:opacity-60 disabled:cursor-default"
+                >
+                  <ZoomOut className="w-5 h-5" />
+                  {t('topBar.zoomOutTitle')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onZoomIn}
+                  disabled={isZoomInDisabled}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 px-3 py-3 font-bold text-[var(--ui-sm)] text-gray-700 disabled:opacity-60 disabled:cursor-default"
+                >
+                  <ZoomIn className="w-5 h-5" />
+                  {t('topBar.zoomInTitle')}
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="text-[var(--ui-xs)] text-gray-500 font-semibold">{t('more.exportSection')}</div>
               <button

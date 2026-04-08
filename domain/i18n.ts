@@ -62,6 +62,7 @@ const messages: I18nMessages = {
     },
     more: {
       title: 'その他',
+      quickSection: 'クイック操作',
       close: '閉じる',
       exportSection: '書き出し',
       exportAudio: 'トラック別WAVをZIPでダウンロード',
@@ -295,6 +296,7 @@ const messages: I18nMessages = {
     },
     more: {
       title: 'More',
+      quickSection: 'Quick Actions',
       close: 'Close',
       exportSection: 'Export',
       exportAudio: 'Download per-track WAV as ZIP',

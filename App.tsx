@@ -2739,7 +2739,19 @@ export default function App() {
         isInputConfigLocked={recordingState !== RecordingState.IDLE}
         t={t}
         playWhileRecording={playWhileRecording}
+        isResetDisabled={recordingState === RecordingState.RECORDING || recordingState === RecordingState.PROCESSING}
+        isZoomInDisabled={isZoomInDisabled}
+        isZoomOutDisabled={isZoomOutDisabled}
         onClose={() => setIsMoreOpen(false)}
+        onOpenHelp={() => {
+          setIsHelpOpen(true);
+          setIsMoreOpen(false);
+          setMuteMenu(null);
+        }}
+        onReset={handleResetProject}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
         onExportAudio={() => void handleExportAudio()}
         onExportSheetImagesCurrent={() => void handleExportSheetImagesCurrent()}
         onExportSheetImagesAll={() => void handleExportSheetImagesAll()}

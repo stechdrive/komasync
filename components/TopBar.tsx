@@ -55,15 +55,15 @@ export const TopBar: React.FC<TopBarProps> = ({
   const selectionSuffix = selectionTimecode ? t('topBar.selectionSuffix', { selection: selectionTimecode }) : '';
 
   return (
-    <div className="safe-area-top topbar-compact h-full bg-indigo-600 text-white border-b border-indigo-700/40">
-      <div className="h-full px-2 sm:px-3 py-1 sm:py-2 flex flex-wrap items-center gap-1 sm:flex-nowrap sm:gap-3">
-        <div className="flex items-center gap-2 min-w-0 flex-1 w-full sm:flex-none sm:w-auto">
+    <div className="safe-area-top bg-indigo-600 text-white border-b border-indigo-700/40">
+      <div className="px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
             disabled={isResetDisabled}
             onClick={onReset}
             {...tooltipProps}
-            className={`shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center border transition-colors ${
+            className={`mobile-compact-hide shrink-0 w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center border transition-colors ${
               isResetDisabled
                 ? 'opacity-40 border-white/20'
                 : 'bg-indigo-700/40 hover:bg-indigo-700 border-white/20'
@@ -75,8 +75,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           <div className="min-w-0 flex flex-col gap-0.5 leading-tight">
             <div className="min-w-0 flex items-baseline gap-2">
-              <div className="text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
-              <div className="text-[var(--ui-sm)] opacity-80 shrink-0 whitespace-nowrap">{sheetLabel}</div>
+              <div className="mobile-compact-hide text-[var(--ui-sm)] font-bold truncate shrink-0">{APP_NAME}</div>
+              <div className="text-[var(--ui-sm)] opacity-90 font-semibold shrink-0 whitespace-nowrap">{sheetLabel}</div>
             </div>
             <div className="font-mono text-[var(--ui-xs)] sm:text-[var(--ui-sm)] truncate min-w-0">
               {totalTimecode}
@@ -85,8 +85,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-nowrap items-center gap-0.5 sm:gap-1 shrink-0 w-full justify-end sm:w-auto">
-          <div className="flex items-center gap-0.5 sm:gap-1 mr-0.5 sm:mr-1">
+        <div className="flex flex-nowrap items-center gap-0.5 sm:gap-1 shrink-0 justify-end">
+          <div className="mobile-compact-hide flex items-center gap-0.5 sm:gap-1 mr-0.5 sm:mr-1">
             <button
               type="button"
               onClick={onZoomOut}
@@ -160,7 +160,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onOpenHelp}
             {...tooltipProps}
-            className="w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
+            className="mobile-compact-hide w-[var(--control-size)] h-[var(--control-size)] rounded-lg flex items-center justify-center hover:bg-indigo-700/40"
             title={t('topBar.helpTitle')}
           >
             <HelpCircle className="w-[var(--control-icon)] h-[var(--control-icon)]" />
