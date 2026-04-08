@@ -1174,6 +1174,22 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     updateMouseSelectionCursor(current.contentX, current.contentY, current.lastClientX, current.lastClientY);
   }, [isMouseSelectionCursorVisible, scrollLeft, scrollTop, updateMouseSelectionCursor]);
 
+  const getSelectionTargetAtPoint = useCallback(
+    (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
+      const directTarget = getTrackAtPoint(clientX, clientY);
+      if (directTarget) {
+        selectionTrackIdRef.current = directTarget.trackId;
+        return directTarget;
+      }
+
+      const frame = getScrubFrameAtPoint(clientX, clientY);
+      const trackId = selectionTrackIdRef.current;
+      if (frame === null || !trackId) return null;
+      return { frame, trackId };
+    },
+    [getScrubFrameAtPoint, getTrackAtPoint]
+  );
+
   const updateSelectionAtPoint = useCallback(
     (clientX: number, clientY: number, pointerType: string) => {
       if (selectionAnchorRef.current === null) return;
@@ -1408,22 +1424,6 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       normalizeSelectionRange({ startFrame: selectionAnchorRef.current, endFrame: targetFrame }),
     ]);
   };
-
-  const getSelectionTargetAtPoint = useCallback(
-    (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
-      const directTarget = getTrackAtPoint(clientX, clientY);
-      if (directTarget) {
-        selectionTrackIdRef.current = directTarget.trackId;
-        return directTarget;
-      }
-
-      const frame = getScrubFrameAtPoint(clientX, clientY);
-      const trackId = selectionTrackIdRef.current;
-      if (frame === null || !trackId) return null;
-      return { frame, trackId };
-    },
-    [getScrubFrameAtPoint, getTrackAtPoint]
-  );
 
   const openSelectionMenu = (point: { x: number; y: number }, target: { frame: number; trackId: string } | null) => {
     if (!onOpenSelectionMenu || !target) return;
