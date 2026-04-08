@@ -1411,12 +1411,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   );
 
   const buildSelectionRanges = (targetFrame: number): SelectionRanges => {
-    if (
-      selectionPreserveInitialRef.current &&
-      selectionDragStartFrameRef.current !== null &&
-      selectionDragStartFrameRef.current === targetFrame
-    ) {
-      return selectionDragInitialRangesRef.current;
+    const dragStartFrame = selectionDragStartFrameRef.current;
+    if (selectionPreserveInitialRef.current && dragStartFrame !== null) {
+      if (dragStartFrame === targetFrame) {
+        return selectionDragInitialRangesRef.current;
+      }
+      selectionPreserveInitialRef.current = false;
     }
     if (selectionAnchorRef.current === null) return selectionRangeRef.current;
     return mergeSelectionRanges([
