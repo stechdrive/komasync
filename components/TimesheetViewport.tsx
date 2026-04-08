@@ -1361,6 +1361,17 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     return trackId === editTarget;
   };
 
+  const getSelectionBaseRangesForDraft = useCallback(
+    (frame: number, trackId: string | null, append: boolean): SelectionRanges => {
+      if (!append) return [];
+      const currentRanges = selectionRangeRef.current;
+      if (!isMobileSelectionMode) return currentRanges;
+      if (!isSelectionHit(frame, trackId)) return currentRanges;
+      return currentRanges.filter((range) => frame < range.startFrame || frame > range.endFrame);
+    },
+    [isMobileSelectionMode]
+  );
+
   const openSelectionMenu = (point: { x: number; y: number }, target: { frame: number; trackId: string } | null) => {
     if (!onOpenSelectionMenu || !target) return;
     const hitSelection = isSelectionHit(target.frame, target.trackId);
@@ -1584,7 +1595,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
             startDistance: pinchInfo.distance,
             startZoom: zoom,
             startCenter: pinchInfo.center,
-            mode: null,
+            mode: isMobileSelectionMode ? 'pan' : null,
           };
           if (scrollEl) {
             pinchPanStartRef.current = {
@@ -1652,7 +1663,11 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         };
         if (isMobileSelectionMode || !isMobileTimesheetLayout) {
           selectionAnchorRef.current = target.frame;
-          selectionBaseRangesRef.current = isMobileSelectionMode ? selectionRangeRef.current : [];
+          selectionBaseRangesRef.current = getSelectionBaseRangesForDraft(
+            target.frame,
+            target.trackId,
+            isMobileSelectionMode
+          );
         }
         startLongPressMenu(e, target);
         return;
@@ -1677,7 +1692,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           pinchInfo.center.x - pinchState.startCenter.x,
           pinchInfo.center.y - pinchState.startCenter.y
         );
-        const zoomThreshold = isZoomed ? 16 : 10;
+        const zoomThreshold = isZoomed ? 20 : 14;
         const panThreshold = 8;
 
         if (distanceDelta >= zoomThreshold) {
