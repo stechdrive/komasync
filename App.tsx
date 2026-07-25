@@ -5,6 +5,7 @@ import {
   clearAudioRangesWithSilence,
   deleteAudioRangeRipple,
   extractAudioRangesPadded,
+  frameToSampleIndex,
   insertAudioAtFrame,
   insertSilenceFramesAtFrame,
   overwriteAudioAtFrame,
@@ -57,8 +58,7 @@ import { createI18n, getInitialLanguage, type Language } from './domain/i18n';
 
 const FPS = DEFAULT_FPS;
 const FRAMES_PER_COLUMN = getFramesPerColumn(FPS);
-const SCRUB_PREVIEW_SEC = 0.08;
-const SCRUB_FADE_SEC = 0.01;
+const SCRUB_FADE_SEC = 0.005;
 const SCRUB_THROTTLE_MS = 50;
 const SCRUB_STATE_RESET_MS = 200;
 const MIC_SLEEP_MS = 5 * 60 * 1000;
@@ -364,7 +364,7 @@ export default function App() {
   
   // Store source nodes for each track for mixed playback
   const sourceNodesRef = useRef<Map<string, { source: AudioBufferSourceNode; gain: GainNode }>>(new Map());
-  const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode }[]>([]);
+  const scrubNodesRef = useRef<{ source: AudioBufferSourceNode; gain: GainNode; endTime: number }[]>([]);
   const scrubLastTimeRef = useRef(0);
   const scrubFramePendingRef = useRef<number | null>(null);
   const scrubFrameLastRef = useRef<number | null>(null);
@@ -892,8 +892,35 @@ export default function App() {
     setRecordingState(RecordingState.PAUSED);
   }, [stopPlaybackLoop]);
 
-  const stopScrubSources = useCallback(() => {
-    scrubNodesRef.current.forEach(({ source, gain }) => {
+  const stopScrubSources = useCallback((immediate = false) => {
+    const nodes = scrubNodesRef.current;
+    scrubNodesRef.current = [];
+    const ctx = audioContextRef.current;
+
+    nodes.forEach(({ source, gain, endTime }) => {
+      if (!immediate && ctx?.state === 'running') {
+        const nowTime = ctx.currentTime;
+        const stopTime = Math.min(endTime, nowTime + SCRUB_FADE_SEC);
+        try {
+          if (stopTime <= nowTime) {
+            source.stop();
+            return;
+          }
+          if (typeof gain.gain.cancelAndHoldAtTime === 'function') {
+            gain.gain.cancelAndHoldAtTime(nowTime);
+          } else {
+            const currentGain = gain.gain.value;
+            gain.gain.cancelScheduledValues(nowTime);
+            gain.gain.setValueAtTime(currentGain, nowTime);
+          }
+          gain.gain.linearRampToValueAtTime(0, stopTime);
+          source.stop(stopTime);
+          return;
+        } catch {
+          // 即時停止へフォールバックする
+        }
+      }
+
       try {
         source.stop();
       } catch {
@@ -910,7 +937,6 @@ export default function App() {
         // no-op
       }
     });
-    scrubNodesRef.current = [];
   }, []);
 
   const playScrubPreview = useCallback((frame: number, trackId?: string) => {
@@ -938,14 +964,23 @@ export default function App() {
 
     stopScrubSources();
 
-    const offset = frame / FPS;
     const nowTime = ctx.currentTime;
+    const safeFrame = Math.max(0, Math.floor(frame));
 
     audibleTracks.forEach((track) => {
       const buffer = track.audioBuffer;
       if (!buffer) return;
-      if (offset >= buffer.duration) return;
-      const duration = Math.min(SCRUB_PREVIEW_SEC, buffer.duration - offset);
+
+      // フレーム境界をサンプル位置に丸め、隣のフレームを一切含めない
+      const startSample = frameToSampleIndex(safeFrame, buffer.sampleRate, FPS);
+      const endSampleExclusive = Math.min(
+        buffer.length,
+        frameToSampleIndex(safeFrame + 1, buffer.sampleRate, FPS)
+      );
+      if (startSample >= buffer.length || endSampleExclusive <= startSample) return;
+
+      const offset = startSample / buffer.sampleRate;
+      const duration = (endSampleExclusive - startSample) / buffer.sampleRate;
       if (duration <= 0) return;
 
       const source = ctx.createBufferSource();
@@ -960,8 +995,22 @@ export default function App() {
 
       source.connect(gain);
       gain.connect(ctx.destination);
-      source.start(0, offset, duration);
-      scrubNodesRef.current.push({ source, gain });
+      const scrubNode = { source, gain, endTime: nowTime + duration };
+      source.onended = () => {
+        scrubNodesRef.current = scrubNodesRef.current.filter((node) => node.source !== source);
+        try {
+          source.disconnect();
+        } catch {
+          // no-op
+        }
+        try {
+          gain.disconnect();
+        } catch {
+          // no-op
+        }
+      };
+      source.start(nowTime, offset, duration);
+      scrubNodesRef.current.push(scrubNode);
     });
   }, [stopScrubSources, tracks]);
 
@@ -1886,7 +1935,7 @@ export default function App() {
   // Initialize Audio Context Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopScrubSources();
+      stopScrubSources(true);
       stopAllSources();
       stopVuMeter();
       stopMicStream();
@@ -2425,7 +2474,6 @@ export default function App() {
     isScrubbingRef.current = false;
     flushScrubFrame();
     stopScrubState();
-    stopScrubSources();
   };
 
   // --- Keyboard Shortcuts ---

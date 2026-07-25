@@ -1,7 +1,7 @@
 {
   "name": "komasync",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.9.1",
   "author": "stechdrive",
   "license": "MIT",
   "homepage": "https://stechdrive.github.io/komasync/",
@@ -18,7 +18,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
+    "audit:repository": "node scripts/audit-public.mjs --repository",
+    "audit:public": "node scripts/audit-public.mjs --repository --dist dist",
+    "check": "npm run lint && npm run build && npm run audit:public",
+    "predeploy": "npm run build && npm run audit:public",
     "deploy": "gh-pages -d dist",
     "lint": "eslint ."
   },

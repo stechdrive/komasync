@@ -1,5 +1,5 @@
-# Logs
-logs
+# Logs / generated output
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,22 +7,65 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.cache/
+.vite/
 *.local
+*.tmp
+*.temp
+*.bak
+*.patch
+*.diff
+*.zip
+*.7z
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Local environment / credentials
+.env
+.env.*
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials*.json
+service-account*.json
+
+# Personal development metadata
+.agents/
+.claude/
+.codex/
+.githooks/
+.local/
+.vscode/
+.idea/
+docs/
+AGENTS.md
+CLAUDE.md
+REQUIREMENTS.md
+metadata.json
+
+# Local source material
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.webm
+
+# OS / editor files
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
+*.code-workspace
 *.sw?
 
 # Project-specific
 loft/
-AGENTS.md

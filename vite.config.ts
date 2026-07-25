@@ -3,7 +3,13 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+    const env = loadEnv(mode, '.', 'VITE_');
+    const unexpectedPublicEnv = Object.keys(env).filter((key) => key !== 'VITE_BASE');
+    if (mode === 'production' && unexpectedPublicEnv.length > 0) {
+      throw new Error(
+        `本番ビルドでは VITE_BASE 以外の公開環境変数を使用できません: ${unexpectedPublicEnv.join(', ')}`
+      );
+    }
     const coopHeaders = {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -25,6 +31,11 @@ export default defineConfig(({ mode }) => {
       : '/';
     return {
       base,
+      envPrefix: 'VITE_',
+      build: {
+        // ローカルのソースパスやソース本文を公開成果物へ含めない
+        sourcemap: false,
+      },
       worker: {
         format: 'es',
       },
