@@ -22,7 +22,8 @@
     "audit:repository": "node scripts/audit-public.mjs --repository",
     "audit:public": "node scripts/audit-public.mjs --repository --dist dist",
     "check": "npm run lint && npm run typecheck && npm run build && npm run audit:public",
-    "predeploy": "npm run check",
+    "clean:pages": "gh-pages-clean",
+    "predeploy": "npm run check && npm run clean:pages",
     "deploy": "gh-pages -d dist",
     "lint": "eslint ."
   },
