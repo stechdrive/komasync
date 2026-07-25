@@ -340,13 +340,16 @@ const TimesheetColumnComponent: React.FC<TimesheetColumnProps> = ({
                 const borderClass = getRowBorderClass(rowIndex, fps, false);
                 const cellCursor = isCurrent ? 'cursor-grab' : 'cursor-pointer';
 
-                let bgClass = '';
-                if (isCurrent) bgClass = 'bg-yellow-200';
-                else if (isSelectionActive) bgClass = 'bg-sky-300/70';
-                else if (isTargetTrack) bgClass = 'bg-white';
-                else bgClass = 'bg-gray-50';
-
-                if (isPastEnd && !isCurrent && !isInSelection) bgClass = 'bg-slate-100/80';
+                const bgClass =
+                  isPastEnd && !isCurrent && !isInSelection
+                    ? 'bg-slate-100/80'
+                    : isCurrent
+                      ? 'bg-yellow-200'
+                      : isSelectionActive
+                        ? 'bg-sky-300/70'
+                        : isTargetTrack
+                          ? 'bg-white'
+                          : 'bg-gray-50';
                 const shadowParts = [
                   ...(highlightBorder
                     ? [`inset 2px 0 0 ${highlightBorder}`, `inset -2px 0 0 ${highlightBorder}`]

@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
-import react from "eslint-plugin-react";
+import eslintReact from "@eslint-react/eslint-plugin";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
@@ -24,21 +24,18 @@ export default [
       },
     },
     plugins: {
+      ...eslintReact.configs["recommended-typescript"].plugins,
       "@typescript-eslint": tsPlugin,
-      react,
       "react-hooks": reactHooks,
     },
     settings: {
-      react: {
-        version: "detect",
-      },
+      ...eslintReact.configs["recommended-typescript"].settings,
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
-      ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
+      ...eslintReact.configs["recommended-typescript"].rules,
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
       "no-unused-vars": "off",
       "no-undef": "off",
       "no-empty": ["error", { allowEmptyCatch: true }],

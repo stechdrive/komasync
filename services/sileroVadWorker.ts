@@ -124,7 +124,7 @@ const normalizeBaseUrl = (baseUrl: string): string => {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 };
 
-const findName = (names: string[], candidates: string[]): string | undefined => {
+const findName = (names: readonly string[], candidates: readonly string[]): string | undefined => {
   const lower = names.map((name) => name.toLowerCase());
   for (const candidate of candidates) {
     const index = lower.indexOf(candidate);
@@ -137,14 +137,31 @@ const findName = (names: string[], candidates: string[]): string | undefined => 
   return undefined;
 };
 
-const resolveStateShape = (meta: { dimensions?: number[] } | undefined, fallback: number[]): number[] => {
-  const dims = meta?.dimensions ?? [];
-  const valid = dims.length >= 2 && dims.every((dim) => typeof dim === 'number' && dim > 0);
-  return valid ? dims : fallback;
+type TensorMetadataLike = {
+  name?: string;
+  dimensions?: ReadonlyArray<number | string>;
+  shape?: ReadonlyArray<number | string>;
 };
 
-const resolveInputShape = (meta: { dimensions?: number[] } | undefined): number[] => {
-  const dims = meta?.dimensions ?? [];
+const getMetadataDimensions = (meta: TensorMetadataLike | undefined): ReadonlyArray<number | string> =>
+  meta?.shape ?? meta?.dimensions ?? [];
+
+const findMetadata = (
+  metadata: readonly TensorMetadataLike[],
+  name: string | undefined,
+): TensorMetadataLike | undefined => {
+  if (!name) return undefined;
+  return metadata.find((item) => item.name === name);
+};
+
+const resolveStateShape = (meta: TensorMetadataLike | undefined, fallback: number[]): number[] => {
+  const dims = getMetadataDimensions(meta);
+  const valid = dims.length >= 2 && dims.every((dim): dim is number => typeof dim === 'number' && dim > 0);
+  return valid ? [...dims] : fallback;
+};
+
+const resolveInputShape = (meta: TensorMetadataLike | undefined): number[] => {
+  const dims = getMetadataDimensions(meta);
   const inputLen = VAD_CONTEXT_SAMPLES + VAD_CHUNK_SAMPLES;
   if (dims.length === 3) return [1, 1, inputLen];
   if (dims.length === 2) return [1, inputLen];
@@ -187,10 +204,16 @@ const ensureSession = async (baseUrl: string): Promise<SileroSessionInfo> => {
       const hnName = !useState ? findName(outputNames, ['hn', 'h']) ?? outputNames[1] : undefined;
       const cnName = !useState ? findName(outputNames, ['cn', 'c']) ?? outputNames[2] : undefined;
 
-      const inputShape = resolveInputShape(session.inputMetadata?.[inputName]);
-      const stateShape = useState ? resolveStateShape(session.inputMetadata?.[stateName ?? ''], [2, 1, 128]) : undefined;
-      const hShape = !useState ? resolveStateShape(session.inputMetadata?.[hName ?? ''], [2, 1, 64]) : undefined;
-      const cShape = !useState ? resolveStateShape(session.inputMetadata?.[cName ?? ''], [2, 1, 64]) : undefined;
+      const inputShape = resolveInputShape(findMetadata(session.inputMetadata, inputName));
+      const stateShape = useState
+        ? resolveStateShape(findMetadata(session.inputMetadata, stateName), [2, 1, 128])
+        : undefined;
+      const hShape = !useState
+        ? resolveStateShape(findMetadata(session.inputMetadata, hName), [2, 1, 64])
+        : undefined;
+      const cShape = !useState
+        ? resolveStateShape(findMetadata(session.inputMetadata, cName), [2, 1, 64])
+        : undefined;
 
       return {
         ort,

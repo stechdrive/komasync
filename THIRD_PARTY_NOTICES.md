@@ -5,7 +5,7 @@ This project redistributes the following third-party components and model files.
 ## Silero VAD model (`public/models/silero_vad.onnx`)
 
 Source repository: https://github.com/snakers4/silero-vad
-Obtained from: https://pypi.org/project/silero-vad/ (silero_vad-6.2.0-py3-none-any.whl, file: silero_vad/data/silero_vad_16k_op15.onnx)
+Obtained from: https://pypi.org/project/silero-vad/ (silero_vad-6.2.1-py3-none-any.whl, file: silero_vad/data/silero_vad_op18_ifless.onnx)
 License: MIT
 
 MIT License
@@ -33,6 +33,7 @@ SOFTWARE.
 ## onnxruntime-web
 
 Source repository: https://github.com/microsoft/onnxruntime
+Version: 1.27.0
 License: MIT
 Bundled files: `public/onnxruntime/ort-wasm-simd-threaded.mjs`, `public/onnxruntime/ort-wasm-simd-threaded.wasm`
 

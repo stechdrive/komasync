@@ -2,7 +2,11 @@ export type Language = 'ja' | 'en';
 export type Translator = (key: string, params?: Record<string, string | number>) => string;
 export type ListTranslator = (key: string) => string[];
 
-type I18nValue = string | string[] | Record<string, I18nValue>;
+interface I18nBranch {
+  [key: string]: I18nValue;
+}
+
+type I18nValue = string | string[] | I18nBranch;
 
 type I18nMessages = {
   ja: Record<string, I18nValue>;
