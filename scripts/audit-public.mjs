@@ -21,9 +21,12 @@ const getOption = (name) => {
 const auditRepository = hasFlag('--repository');
 const distOption = getOption('--dist');
 const historyRange = getOption('--history-range');
+const historyTip = getOption('--history-tip');
 
-if (!auditRepository && !distOption && !historyRange) {
-  throw new Error('検査対象を --repository / --dist <dir> / --history-range <range> で指定してください。');
+if (!auditRepository && !distOption && !historyRange && !historyTip) {
+  throw new Error(
+    '検査対象を --repository / --dist <dir> / --history-range <range> / --history-tip <sha> で指定してください。',
+  );
 }
 
 const normalizePath = (value) => value.replaceAll('\\', '/').replace(/^\.\//, '');
@@ -392,6 +395,43 @@ const auditHistoryRange = (range) => {
   summaries.push(`outgoing history ${range}`);
 };
 
+const auditHistoryTip = (tip) => {
+  if (!/^[0-9a-f]{40}$/i.test(tip)) {
+    throw new Error(`不正な履歴先端です: ${tip}`);
+  }
+
+  const nameStatus = runGit([
+    'log',
+    '--format=',
+    '--name-status',
+    '--no-renames',
+    tip,
+  ]);
+  for (const line of nameStatus.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [status, ...pathParts] = line.split('\t');
+    const file = pathParts.at(-1);
+    if (!file || status.startsWith('D')) continue;
+    scanPath('outgoing-history', file);
+  }
+
+  const patch = runGit([
+    'log',
+    '--format=',
+    '--no-ext-diff',
+    '--unified=0',
+    '-p',
+    tip,
+  ]);
+  const additions = patch
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+    .map((line) => line.slice(1))
+    .join('\n');
+  scanText('outgoing-history', tip, additions);
+  summaries.push(`outgoing history tip ${tip}`);
+};
+
 if (auditRepository) {
   auditRepositoryFiles();
 }
@@ -400,6 +440,9 @@ if (distOption) {
 }
 if (historyRange) {
   auditHistoryRange(historyRange);
+}
+if (historyTip) {
+  auditHistoryTip(historyTip);
 }
 
 if (findings.length > 0) {
