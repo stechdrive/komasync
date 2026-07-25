@@ -1,9 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Track } from '@/types';
-import { getFramesPerColumn, getFramesPerSheet, COLUMNS_PER_SHEET } from '@/domain/timesheet';
+import {
+  getFramesPerColumn,
+  getFramesPerSheet,
+  getSheetEndFrameExclusiveFromFrame,
+  COLUMNS_PER_SHEET,
+} from '@/domain/timesheet';
 import { TimesheetColumn } from '@/components/TimesheetColumn';
 import { EditTarget, SelectionRange, SelectionRanges } from '@/domain/editTypes';
 import type { Translator } from '@/domain/i18n';
+import { getFrameFromColumnCursor, getMobileRailFrame, normalizeColumnCursor } from '@/domain/timesheetPointer';
 
 type TimesheetViewportProps = {
   tracks: Track[];
@@ -154,6 +160,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     lastClientY: number;
   } | null>(null);
   const mouseSelectionCursorRef = useRef<HTMLDivElement | null>(null);
+  const scrubCursorStateRef = useRef<{
+    contentX: number;
+    contentY: number;
+    lastClientX: number;
+    lastClientY: number;
+    pointerType: string;
+  } | null>(null);
+  const mouseScrubCursorRef = useRef<HTMLDivElement | null>(null);
   const mobileScrubRailRef = useRef<HTMLDivElement | null>(null);
   const mobileScrubPointerIdRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -161,6 +175,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [isMouseSelectionCursorVisible, setIsMouseSelectionCursorVisible] = useState(false);
+  const [isMouseScrubCursorVisible, setIsMouseScrubCursorVisible] = useState(false);
   const [isMobileScrubRailActive, setIsMobileScrubRailActive] = useState(false);
   const scrollLeftRef = useRef(0);
   const scrollTopRef = useRef(0);
@@ -186,8 +201,20 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     pointerY: number;
     pointerType: string;
   }>({ rafId: null, pointerX: 0, pointerY: 0, pointerType: 'mouse' });
+  const scrubAutoAdvanceRef = useRef<{
+    rafId: number | null;
+    pointerX: number;
+    pointerY: number;
+    pointerType: string;
+  }>({ rafId: null, pointerX: 0, pointerY: 0, pointerType: 'mouse' });
+  const mobileRailAutoScrollRef = useRef<{
+    rafId: number | null;
+    pointerY: number;
+    pointerType: string;
+  }>({ rafId: null, pointerY: 0, pointerType: 'touch' });
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onSelectionScrubRef = useRef(onSelectionScrub);
+  const onScrubMoveRef = useRef(onScrubMove);
   const updateRectRef = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -244,7 +271,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   const framesPerColumn = getFramesPerColumn(fps);
   const framesPerSheet = getFramesPerSheet(fps);
   const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
-  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1, virtualMaxFramesProp ?? 0);
+  const currentSheetEndFrame = getSheetEndFrameExclusiveFromFrame(currentFrame, fps);
+  const virtualMaxFrames = Math.max(maxFrames, currentFrame + 1, currentSheetEndFrame, virtualMaxFramesProp ?? 0);
   const totalColumns = Math.max(2, Math.ceil(virtualMaxFrames / framesPerColumn));
   const isMobileTimesheetLayout = isCoarsePointer && viewportWidth > 0 && viewportWidth < 900;
   const isMobileSelectionMode = isMobileTimesheetLayout && mobileInteractionMode === 'select';
@@ -257,6 +285,10 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       : isIOS
         ? 'pan-x pan-y'
         : 'none';
+
+  useEffect(() => {
+    onScrubMoveRef.current = onScrubMove;
+  }, [onScrubMove]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -727,8 +759,12 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     const rect = rail.getBoundingClientRect();
     if (rect.height <= 0) return null;
     const localY = clamp(clientY - rect.top, 0, Math.max(0, rect.height - 1));
-    const maxFrame = Math.max(0, totalColumns * framesPerColumn - 1);
-    return clamp(Math.floor((scrollTopRef.current + localY) / rowHeight), 0, maxFrame);
+    return getMobileRailFrame({
+      scrollTop: scrollTopRef.current,
+      localY,
+      rowHeight,
+      totalFrames: totalColumns * framesPerColumn,
+    });
   }, [framesPerColumn, rowHeight, totalColumns]);
 
   const getTrackAtPoint = useCallback(
@@ -1061,32 +1097,13 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         };
       }
 
-      const maxContentX = Math.max(0, totalColumns * columnWidth - 1);
-      const maxContentY = Math.max(0, columnHeight - 1);
-      let nextX = clamp(contentX, 0, maxContentX);
-      let nextY = contentY;
-
-      while (nextY < 0) {
-        const currentColumnIndex = clamp(Math.floor(nextX / columnWidth), 0, totalColumns - 1);
-        if (currentColumnIndex <= 0) {
-          nextY = 0;
-          break;
-        }
-        nextY += columnHeight;
-        nextX = Math.max(0, nextX - columnWidth);
-      }
-      while (nextY >= columnHeight) {
-        const currentColumnIndex = clamp(Math.floor(nextX / columnWidth), 0, totalColumns - 1);
-        if (currentColumnIndex >= totalColumns - 1) {
-          nextY = maxContentY;
-          break;
-        }
-        nextY -= columnHeight;
-        nextX = Math.min(maxContentX, nextX + columnWidth);
-      }
-
-      nextY = clamp(nextY, 0, maxContentY);
-      return { contentX: nextX, contentY: nextY };
+      return normalizeColumnCursor({
+        contentX,
+        contentY,
+        columnWidth,
+        columnHeight,
+        totalColumns,
+      });
     },
     [columnHeight, columnWidth, isMobileTimesheetLayout, totalColumns, totalContentHeight, totalContentWidth]
   );
@@ -1177,6 +1194,173 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (!isMouseSelectionCursorVisible || !current) return;
     updateMouseSelectionCursor(current.contentX, current.contentY, current.lastClientX, current.lastClientY);
   }, [isMouseSelectionCursorVisible, scrollLeft, scrollTop, updateMouseSelectionCursor]);
+
+  const stopScrubAutoAdvance = useCallback(() => {
+    if (scrubAutoAdvanceRef.current.rafId !== null) {
+      cancelAnimationFrame(scrubAutoAdvanceRef.current.rafId);
+      scrubAutoAdvanceRef.current.rafId = null;
+    }
+    updateWrapCue(null);
+  }, [updateWrapCue]);
+
+  const updateScrubCursor = useCallback(
+    (
+      contentX: number,
+      contentY: number,
+      lastClientX: number,
+      lastClientY: number,
+      pointerType: string
+    ) => {
+      const normalized = normalizeColumnCursor({
+        contentX,
+        contentY,
+        columnWidth,
+        columnHeight,
+        totalColumns,
+      });
+      scrubCursorStateRef.current = {
+        contentX: normalized.contentX,
+        contentY: normalized.contentY,
+        lastClientX,
+        lastClientY,
+        pointerType,
+      };
+
+      const rect = rectRef.current;
+      const scrollEl = scrollRef.current;
+      const cursorEl = mouseScrubCursorRef.current;
+      if (!rect || !scrollEl || !cursorEl || pointerType !== 'mouse') return;
+
+      const displayX = clamp(normalized.contentX - scrollEl.scrollLeft + rect.left, rect.left + 4, rect.right - 4);
+      const displayY = clamp(normalized.contentY - scrollEl.scrollTop + rect.top, rect.top + 4, rect.bottom - 4);
+      cursorEl.style.left = `${displayX - rect.left}px`;
+      cursorEl.style.top = `${displayY - rect.top}px`;
+    },
+    [columnHeight, columnWidth, totalColumns]
+  );
+
+  const getScrubCursorFrame = useCallback((): number | null => {
+    const current = scrubCursorStateRef.current;
+    if (!current) return null;
+    return getFrameFromColumnCursor({
+      contentX: current.contentX,
+      contentY: current.contentY,
+      columnWidth,
+      rowHeight,
+      framesPerColumn,
+      totalColumns,
+    });
+  }, [columnWidth, framesPerColumn, rowHeight, totalColumns]);
+
+  const startScrubCursor = useCallback(
+    (frame: number, clientX: number, clientY: number, pointerType: string) => {
+      const rect = rectRef.current;
+      const scrollEl = scrollRef.current;
+      if (!rect || !scrollEl || columnWidth <= 0 || rowHeight <= 0) return;
+
+      const columnIndex = clamp(Math.floor(frame / framesPerColumn), 0, totalColumns - 1);
+      const rowIndex = clamp(frame - columnIndex * framesPerColumn, 0, framesPerColumn - 1);
+      const rawContentX = clientX - rect.left + scrollEl.scrollLeft;
+      const columnOffsetX = clamp(rawContentX - columnIndex * columnWidth, 0, Math.max(0, columnWidth - 1));
+
+      setIsMouseScrubCursorVisible(pointerType === 'mouse');
+      updateScrubCursor(
+        columnIndex * columnWidth + columnOffsetX,
+        (rowIndex + 0.5) * rowHeight,
+        clientX,
+        clientY,
+        pointerType
+      );
+    },
+    [columnWidth, framesPerColumn, rowHeight, totalColumns, updateScrubCursor]
+  );
+
+  const syncScrubCursorToPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const current = scrubCursorStateRef.current;
+      if (!current) return;
+      updateScrubCursor(
+        current.contentX + clientX - current.lastClientX,
+        current.contentY + clientY - current.lastClientY,
+        clientX,
+        clientY,
+        current.pointerType
+      );
+    },
+    [updateScrubCursor]
+  );
+
+  const runScrubAutoAdvance = useCallback(() => {
+    const current = scrubCursorStateRef.current;
+    const rect = rectRef.current;
+    if (!isScrubbingRef.current || !current || !rect) {
+      stopScrubAutoAdvance();
+      return;
+    }
+
+    const { pointerY, pointerType } = scrubAutoAdvanceRef.current;
+    const edge = EDGE_SCROLL_SIZE;
+    let direction = 0;
+    let distance = 0;
+    if (pointerY < rect.top + edge) {
+      direction = -1;
+      distance = rect.top + edge - pointerY;
+    } else if (pointerY > rect.bottom - edge) {
+      direction = 1;
+      distance = pointerY - (rect.bottom - edge);
+    }
+
+    if (direction === 0) {
+      stopScrubAutoAdvance();
+      return;
+    }
+
+    const speed = getEdgeScrollSpeed(distance, pointerType);
+    updateWrapCue(direction < 0 ? 'up' : 'down');
+    updateScrubCursor(
+      current.contentX,
+      current.contentY + direction * speed,
+      current.lastClientX,
+      current.lastClientY,
+      current.pointerType
+    );
+    const frame = getScrubCursorFrame();
+    if (frame !== null) onScrubMoveRef.current?.(frame);
+
+    scrubAutoAdvanceRef.current.rafId = requestAnimationFrame(runScrubAutoAdvance);
+  }, [getEdgeScrollSpeed, getScrubCursorFrame, stopScrubAutoAdvance, updateScrubCursor, updateWrapCue]);
+
+  const startScrubAutoAdvance = useCallback(
+    (clientX: number, clientY: number, pointerType: string) => {
+      scrubAutoAdvanceRef.current.pointerX = clientX;
+      scrubAutoAdvanceRef.current.pointerY = clientY;
+      scrubAutoAdvanceRef.current.pointerType = pointerType;
+      if (scrubAutoAdvanceRef.current.rafId === null) {
+        scrubAutoAdvanceRef.current.rafId = requestAnimationFrame(runScrubAutoAdvance);
+      }
+    },
+    [runScrubAutoAdvance]
+  );
+
+  const stopScrubCursor = useCallback(() => {
+    stopScrubAutoAdvance();
+    scrubCursorStateRef.current = null;
+    setIsMouseScrubCursorVisible(false);
+  }, [stopScrubAutoAdvance]);
+
+  useEffect(() => {
+    const current = scrubCursorStateRef.current;
+    if (!isMouseScrubCursorVisible || !current) return;
+    updateScrubCursor(
+      current.contentX,
+      current.contentY,
+      current.lastClientX,
+      current.lastClientY,
+      current.pointerType
+    );
+  }, [isMouseScrubCursorVisible, scrollLeft, scrollTop, updateScrubCursor]);
+
+  useEffect(() => () => stopScrubAutoAdvance(), [stopScrubAutoAdvance]);
 
   const getSelectionTargetAtPoint = useCallback(
     (clientX: number, clientY: number): { frame: number; trackId: string } | null => {
@@ -1471,6 +1655,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     scrubPendingRef.current = null;
     stopPan();
     stopAutoScroll();
+    stopScrubCursor();
     if (isScrubbingRef.current) onScrubEnd?.();
     isScrubbingRef.current = false;
     isSelectingRef.current = false;
@@ -1579,20 +1764,82 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     openSelectionMenu({ x: e.clientX, y: e.clientY }, target);
   };
 
-  const startMobileRailScrub = useCallback((clientY: number) => {
+  const stopMobileRailAutoScroll = useCallback(() => {
+    if (mobileRailAutoScrollRef.current.rafId !== null) {
+      cancelAnimationFrame(mobileRailAutoScrollRef.current.rafId);
+      mobileRailAutoScrollRef.current.rafId = null;
+    }
+  }, []);
+
+  const runMobileRailAutoScroll = useCallback(() => {
+    const scrollEl = scrollRef.current;
+    const rail = mobileScrubRailRef.current;
+    if (mobileScrubPointerIdRef.current === null || !scrollEl || !rail) {
+      stopMobileRailAutoScroll();
+      return;
+    }
+
+    const rect = rail.getBoundingClientRect();
+    const { pointerY, pointerType } = mobileRailAutoScrollRef.current;
+    const edge = EDGE_SCROLL_SIZE;
+    let direction = 0;
+    let distance = 0;
+    if (pointerY < rect.top + edge) {
+      direction = -1;
+      distance = rect.top + edge - pointerY;
+    } else if (pointerY > rect.bottom - edge) {
+      direction = 1;
+      distance = pointerY - (rect.bottom - edge);
+    }
+
+    if (direction === 0) {
+      stopMobileRailAutoScroll();
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    const nextTop = clamp(
+      scrollTopRef.current + direction * getEdgeScrollSpeed(distance, pointerType),
+      0,
+      maxScrollTop
+    );
+    if (nextTop !== scrollTopRef.current) {
+      scrollEl.scrollTop = nextTop;
+      scrollTopRef.current = nextTop;
+    }
+    const frame = getMobileRailFrameAtPoint(pointerY);
+    if (frame !== null) onScrubMoveRef.current?.(frame);
+
+    mobileRailAutoScrollRef.current.rafId = requestAnimationFrame(runMobileRailAutoScroll);
+  }, [getEdgeScrollSpeed, getMobileRailFrameAtPoint, stopMobileRailAutoScroll]);
+
+  const startMobileRailAutoScroll = useCallback(
+    (clientY: number, pointerType: string) => {
+      mobileRailAutoScrollRef.current.pointerY = clientY;
+      mobileRailAutoScrollRef.current.pointerType = pointerType;
+      if (mobileRailAutoScrollRef.current.rafId === null) {
+        mobileRailAutoScrollRef.current.rafId = requestAnimationFrame(runMobileRailAutoScroll);
+      }
+    },
+    [runMobileRailAutoScroll]
+  );
+
+  const startMobileRailScrub = useCallback((clientY: number, pointerType: string) => {
     const frame = getMobileRailFrameAtPoint(clientY);
     if (frame === null) return false;
     setIsMobileScrubRailActive(true);
     onScrubStart?.(frame);
+    startMobileRailAutoScroll(clientY, pointerType);
     return true;
-  }, [getMobileRailFrameAtPoint, onScrubStart]);
+  }, [getMobileRailFrameAtPoint, onScrubStart, startMobileRailAutoScroll]);
 
   const stopMobileRailScrub = useCallback(() => {
     if (mobileScrubPointerIdRef.current === null && !isMobileScrubRailActive) return;
+    stopMobileRailAutoScroll();
     mobileScrubPointerIdRef.current = null;
     setIsMobileScrubRailActive(false);
     onScrubEnd?.();
-  }, [isMobileScrubRailActive, onScrubEnd]);
+  }, [isMobileScrubRailActive, onScrubEnd, stopMobileRailAutoScroll]);
 
   const handleMobileRailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isMobileTimesheetLayout) return;
@@ -1603,7 +1850,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     if (!e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.setPointerCapture(e.pointerId);
     }
-    void startMobileRailScrub(e.clientY);
+    void startMobileRailScrub(e.clientY, e.pointerType);
   }, [isMobileTimesheetLayout, startMobileRailScrub]);
 
   const handleMobileRailPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -1614,7 +1861,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     e.preventDefault();
     e.stopPropagation();
     onScrubMove?.(frame);
-  }, [getMobileRailFrameAtPoint, isMobileTimesheetLayout, onScrubMove]);
+    startMobileRailAutoScroll(e.clientY, e.pointerType);
+  }, [getMobileRailFrameAtPoint, isMobileTimesheetLayout, onScrubMove, startMobileRailAutoScroll]);
 
   const handleMobileRailPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (mobileScrubPointerIdRef.current !== e.pointerId) return;
@@ -1633,6 +1881,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
     }
     stopMobileRailScrub();
   }, [stopMobileRailScrub]);
+
+  useEffect(() => () => stopMobileRailAutoScroll(), [stopMobileRailAutoScroll]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     updateRectRef();
@@ -1861,6 +2111,9 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         pendingTapRef.current = null;
         selectionAnchorRef.current = null;
         resetSelectionDraftState();
+        if (!isMobileTimesheetLayout) {
+          startScrubCursor(pending.frame, pending.x, pending.y, e.pointerType);
+        }
         onScrubStart?.(pending.frame);
       }
 
@@ -1868,8 +2121,17 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         if (e.pointerType === 'touch') {
           e.preventDefault();
         }
-        const frame = getScrubFrameAtPoint(e.clientX, e.clientY);
+        if (!isMobileTimesheetLayout && scrubCursorStateRef.current) {
+          syncScrubCursorToPointer(e.clientX, e.clientY);
+        }
+        const frame =
+          !isMobileTimesheetLayout && scrubCursorStateRef.current
+            ? getScrubCursorFrame()
+            : getScrubFrameAtPoint(e.clientX, e.clientY);
         if (frame !== null) onScrubMove?.(frame);
+        if (!isMobileTimesheetLayout && scrubCursorStateRef.current) {
+          startScrubAutoAdvance(e.clientX, e.clientY, e.pointerType);
+        }
       }
       return;
     }
@@ -2035,6 +2297,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       pendingTapRef.current = null;
       selectionAnchorRef.current = null;
       resetSelectionDraftState();
+      stopScrubCursor();
       stopMouseSelectionCursor();
       return;
     }
@@ -2049,6 +2312,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       pendingTapRef.current = null;
       selectionAnchorRef.current = null;
       resetSelectionDraftState();
+      stopScrubCursor();
       stopMouseSelectionCursor();
       return;
     }
@@ -2154,7 +2418,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
         ref={scrollRef}
         className={`overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain ${
           isMobileTimesheetLayout ? 'h-full min-w-0 flex-1 snap-none' : 'h-full w-full snap-x snap-proximity'
-        } ${isMouseSelectionCursorVisible ? 'cursor-none' : 'cursor-default'}`}
+        } ${isMouseSelectionCursorVisible || isMouseScrubCursorVisible ? 'cursor-none' : 'cursor-default'}`}
         onClick={handleBackdropClick}
         onContextMenu={handleContextMenu}
         onPointerDown={handlePointerDown}
@@ -2286,6 +2550,14 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
           <div
             ref={mouseSelectionCursorRef}
             className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-600 bg-white/95 shadow-[0_0_0_2px_rgba(37,99,235,0.18)]"
+          />
+        </div>
+      )}
+      {isMouseScrubCursorVisible && (
+        <div className="pointer-events-none absolute inset-0 z-50">
+          <div
+            ref={mouseScrubCursorRef}
+            className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-700 bg-white/95 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]"
           />
         </div>
       )}

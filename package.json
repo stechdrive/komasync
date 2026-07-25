@@ -1,7 +1,7 @@
 {
   "name": "komasync",
   "private": true,
-  "version": "1.9.3",
+  "version": "1.9.4",
   "author": "stechdrive",
   "license": "MIT",
   "homepage": "https://stechdrive.github.io/komasync/",
@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "audit:repository": "node scripts/audit-public.mjs --repository",
     "audit:public": "node scripts/audit-public.mjs --repository --dist dist",
-    "check": "npm run lint && npm run typecheck && npm run build && npm run audit:public",
+    "test": "node --test domain/timesheetPointer.test.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run audit:public",
     "clean:pages": "gh-pages-clean",
     "predeploy": "npm run check && npm run clean:pages",
     "deploy": "gh-pages -d dist",

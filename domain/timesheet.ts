@@ -17,3 +17,5 @@ export const getColumnStartFrame = (columnIndex: number, fps: number): number =>
 export const getSheetStartFrame = (sheetIndex: number, fps: number): number =>
   sheetIndex * getFramesPerSheet(fps);
 
+export const getSheetEndFrameExclusiveFromFrame = (frame: number, fps: number): number =>
+  (getSheetIndexFromFrame(Math.max(0, Math.floor(frame)), fps) + 1) * getFramesPerSheet(fps);

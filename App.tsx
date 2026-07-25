@@ -486,7 +486,7 @@ export default function App() {
 
   useEffect(() => {
     maxFramesRef.current = maxFrames;
-    const baseFrame = Math.max(0, Math.floor(currentFrameRef.current));
+    const baseFrame = Math.max(0, Math.floor(currentFrame));
     const columnIndex = Math.floor(baseFrame / FRAMES_PER_COLUMN);
     const required = Math.max(
       maxFrames,
@@ -496,7 +496,7 @@ export default function App() {
       virtualMaxFramesRef.current = required;
       setVirtualMaxFrames(required);
     }
-  }, [maxFrames]);
+  }, [currentFrame, maxFrames]);
 
   useEffect(() => {
     currentFrameRef.current = currentFrame;
