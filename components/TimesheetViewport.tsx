@@ -226,6 +226,8 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
   }, []);
 
   useEffect(() => {
+    // ドラッグ中は開始時のベース範囲を固定し、親stateの反映で最大到達範囲へ戻さない。
+    if (isSelectingRef.current) return;
     selectionRangeRef.current = selection;
     selectionBaseRangesRef.current = selection;
     selectionDragInitialRangesRef.current = selection;
@@ -2056,6 +2058,7 @@ export const TimesheetViewport: React.FC<TimesheetViewportProps> = ({
       suppressBackdropClickRef.current = true;
       selectionAnchorRef.current = null;
       pendingTapRef.current = null;
+      selectionBaseRangesRef.current = selectionRangeRef.current;
       resetSelectionDraftState();
       stopAutoScroll();
       stopMouseSelectionCursor();
